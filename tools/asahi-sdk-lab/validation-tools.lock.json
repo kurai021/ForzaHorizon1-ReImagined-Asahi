@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "packages": [
+    {"nevra": "glslang-16.2.0-1.fc44.aarch64", "sha256": "63b3760e938440420eb26cef78478fcbdeaee597328f36a2bb4989f9c7ae67da"},
+    {"nevra": "spirv-tools-2026.1-1.fc44.aarch64", "sha256": "741ae1faa151361ca0f100cd454bf0afbd74afc9316c779c0d7e8bb31ec5b2da"},
+    {"nevra": "vulkan-validation-layers-1.4.341.0-2.fc44.aarch64", "sha256": "8145203fc3f9f4670bfaee011967b9250266f67e9b768c4a08f88490e9487392"}
+  ]
+}

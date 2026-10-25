@@ -1,0 +1,586 @@
+{
+  "schema": 1,
+  "projectBaseCommit": "43b64aeb63fb8553a906fca764e06614b8a6fe43",
+  "sdkRepository": "https://github.com/rexglue/rexglue-sdk.git",
+  "sdkCommit": "bd833a2ab69d305f99ddf57418fc38ffec8af93d",
+  "inheritedPatches": [
+    {
+      "path": "patches/rexglue-sdk/0001-spirv-tfetch-exp-adjust-from-word-3.patch",
+      "sha256": "81be9cd86efc1ae247508a99075dc53092284baa62d0916d55497e42ff74fb46"
+    },
+    {
+      "path": "patches/rexglue-sdk/0002-spirv-stacked-texture-lerp-from-first-layer.patch",
+      "sha256": "d8917c6557e675f270b72c2df146530ec31d0a71cff5ca0844b48ad89fe5c463"
+    },
+    {
+      "path": "patches/rexglue-sdk/0003-spirv-clamp-stacked-texture-layer.patch",
+      "sha256": "b42168c72e0cd063a3cccfb288e003174c7a55994f2635d39738a4e598443f5a"
+    },
+    {
+      "path": "patches/rexglue-sdk/0004-vulkan-2-10-10-10-render-targets-as-a2b10g10r10.patch",
+      "sha256": "3b8fd39fd76ab91936bd59d08f8aa67cc582789fe73fbfdbfa0723bf46f49f5f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0005-vulkan-shared-memory-compute-write-access-mask.patch",
+      "sha256": "a23a67a9afec7dc0df0bc5a91089f975e24f1e8c3ff01f23376843899f78eaee"
+    },
+    {
+      "path": "patches/rexglue-sdk/0006-rt-transfer-8888-gamma-conversion-direction.patch",
+      "sha256": "0a5994ce11d8e7839db0bfd3a32b6cb83312298ad63b7c19ab69f32d38e02478"
+    },
+    {
+      "path": "patches/rexglue-sdk/0007-vulkan-texture-upload-waw-barrier.patch",
+      "sha256": "26c14c251cd37f98f3159d0c1d939023fe99c71154c3c5bd2e1820726ad08a13"
+    },
+    {
+      "path": "patches/rexglue-sdk/0008-texture-cache-recheck-range-validity-before-watch.patch",
+      "sha256": "4bccd3dac62aca058c990d2e6c43a7199e59bfc757fc4db5becc8044d685602e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0009-shader-scalar-operand-z-with-three-source-vector-op.patch",
+      "sha256": "10a3d14b60251c23d40418f4246f4e736d4c836349881967bee9ed1406d26666"
+    },
+    {
+      "path": "patches/rexglue-sdk/0011-64bpp-color-clear-register-order.patch",
+      "sha256": "a98cdc95815ee7e6a3aedfa73dbee9847fb41447c0d9518e2cf195a8e1994061"
+    },
+    {
+      "path": "patches/rexglue-sdk/0013-drop-kill-pix-post-hi-z-draws.patch",
+      "sha256": "c5b9a7ded3efdb378065b44013f959b7700b24016992e0845cd43af666374f78"
+    },
+    {
+      "path": "patches/rexglue-sdk/0015-rt-transfer-gamma-bytes-to-linear-midpoint.patch",
+      "sha256": "7271354e104ecfc43d26512be103b982cff6c43299279925c31ff5fb01ca7114"
+    },
+    {
+      "path": "patches/rexglue-sdk/0016-vulkan-adaptive-tessellation-factors-as-float-bits.patch",
+      "sha256": "674560a8b2edb01f5263bd860f75d9e0ee185b09191807ec6a46eb9564188b70"
+    },
+    {
+      "path": "patches/rexglue-sdk/0017-spirv-domain-shader-r0w-one.patch",
+      "sha256": "166b100662cce71d4a9fde9bd9f3e2f1b962615372a96305ad7d72822d93df0d"
+    },
+    {
+      "path": "patches/rexglue-sdk/0018-skip-adaptive-triangle-tessellation.patch",
+      "sha256": "0ae6c597eb4385edeb275bc2f3c7a030f39ba3c31ab9cd44da44611288f33a04"
+    },
+    {
+      "path": "patches/rexglue-sdk/0019-xenia-default-cvars-for-reach.patch",
+      "sha256": "0013915001e11f2aee5d0ccf3c412a4b23b04160e1d97734767b8652fa352bab"
+    },
+    {
+      "path": "patches/rexglue-sdk/0020-viz-query-status-not-faked.patch",
+      "sha256": "652bcfccf95bec8e3ad37391b3860e30c7b134048b5d371680f41740626d275f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0021-spirv-position-w-zero-at-infinity.patch",
+      "sha256": "3c7b28eabda219beac87512124cebc11ba45da5b6a4bde7a2ca62ed0c53c29aa"
+    },
+    {
+      "path": "patches/rexglue-sdk/0022-vulkan-zpd-reports-as-running-counter.patch",
+      "sha256": "de0c32664b716f2e9f1ebfd9f8a32eec0d3336276bb5abb051be13178d1e9d0d"
+    },
+    {
+      "path": "patches/rexglue-sdk/0023-empty-resolve-region-is-a-no-op.patch",
+      "sha256": "e3440180c78b07a7e018f714b6e21b09b98a4602ca981d842f94ffad516e2183"
+    },
+    {
+      "path": "patches/rexglue-sdk/0025-vmsum-overflow-is-qnan.patch",
+      "sha256": "ed8fdf58b9ce469e2fc374b30c300d3a34658102ca7506ec9373203d8b1a2015"
+    },
+    {
+      "path": "patches/rexglue-sdk/0028-posix-query-protect-with-procmap-query.patch",
+      "sha256": "4b8fc487e2264e4de4032b51de4d9817fccaaf986588831d4f5428a98c3bbb92"
+    },
+    {
+      "path": "patches/rexglue-sdk/0029-cp-register-writes-in-ranges.patch",
+      "sha256": "e2835e39e6219c13a607abaa26b08520e819966eac6ce92fb0f883fc8310c0ec"
+    },
+    {
+      "path": "patches/rexglue-sdk/0030-wait-reg-mem-wakes-on-vblank.patch",
+      "sha256": "e14346b2f574d7611faaac0c2ea7ad9b5e9d7235e402416e9a8194ea8a2cdbc5"
+    },
+    {
+      "path": "patches/rexglue-sdk/0031-shared-memory-no-lock-for-valid-ranges.patch",
+      "sha256": "f5803a68f817daf655c2e4c34833e5db1e5d7714b1c0b0c69009b922398646d7"
+    },
+    {
+      "path": "patches/rexglue-sdk/0032-unchanged-fetch-constants-keep-bindings.patch",
+      "sha256": "2c5ac286d29b80d61791cbc305e0b42e979d327f3673fecafdee3faf9a72d1fd"
+    },
+    {
+      "path": "patches/rexglue-sdk/0033-wait-multiple-sleeps-until-signalled.patch",
+      "sha256": "884105291ec6bb5693e909435a4e9ba487c0bc4fcdde3efcf694393b8d91c3ac"
+    },
+    {
+      "path": "patches/rexglue-sdk/0034-vulkan-tessellation-shaders-read-system-constants-from-set-1.patch",
+      "sha256": "8c8b40a709ffcb25aed3bed3121bfac5c96317e6bfb839ac67c1a53a657895d7"
+    },
+    {
+      "path": "patches/rexglue-sdk/0035-tessellated-triangle-strips-and-fans-as-lists.patch",
+      "sha256": "6f561e4589c665f7a5597e089389cfad4889e8931a6103bc932aa2994dd6948f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0036-vulkan-hoist-shared-memory-uploads-before-render-pass.patch",
+      "sha256": "0d5bc331c1ecd04156c7c6a6af8f2c38ecd020db9aeb79dc3091b316f1026885"
+    },
+    {
+      "path": "patches/rexglue-sdk/0037-guest-refresh-rate-up-to-480-hz.patch",
+      "sha256": "24588be58babc74e45a49173f317625906461936292dcfaf5aedad63afd941dc"
+    },
+    {
+      "path": "patches/rexglue-sdk/0038-vulkan-threaded-submission.patch",
+      "sha256": "fc149714dce56f464decd00684adebc77d584053beb851de6fe3ce6a268eb405"
+    },
+    {
+      "path": "patches/rexglue-sdk/0039-clear-memory-page-state-off-by-default.patch",
+      "sha256": "71c1d589103cbe36ca230a8d554bf3152f1afada4b1679061225f10db5fb1be6"
+    },
+    {
+      "path": "patches/rexglue-sdk/0040-mnk-steering-ramp-mouse-speed-and-modifier-binds.patch",
+      "sha256": "26252e4e400bda302a80dcfc9b19baecef94ee9999ba19d7e8f52be90b0f48a8"
+    },
+    {
+      "path": "patches/rexglue-sdk/0042-vulkan-render-target-initial-fill.patch",
+      "sha256": "b34d4e9242bd4f4dcd0fd67c992d1282e5d54c881aeaaf4efd9c1ee3e00c47c8"
+    },
+    {
+      "path": "patches/rexglue-sdk/0043-spatial-fsr-and-cas-without-fidelityfx-sdk.patch",
+      "sha256": "eac2176a43c5c1474841496cfe91d220d0ffdab45186f216e1212cd066bce55b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0044-native-windows-sdk-build.patch",
+      "sha256": "a8b7c84fa09e8233826273051b4a6ecadf4815d7e0bb2aafafc890a625a72d61"
+    },
+    {
+      "path": "patches/rexglue-sdk/0045-vulkan-cache-output-pipeline-format.patch",
+      "sha256": "3465df514d75f064b0ef332a618bbdc6142dd5d79cd4d796aff91b30141e4d77"
+    },
+    {
+      "path": "patches/rexglue-sdk/0046-native-vulkan-dlss.patch",
+      "sha256": "0c953ba13ebdd44b607ef571850f635165da6ec64a60cd03c76151cc7a885fca"
+    },
+    {
+      "path": "patches/rexglue-sdk/0047-nvidia-cubemap-implicit-lod.patch",
+      "sha256": "15630a27d632bed01b73c98678c5040c67dfeb52670b8fa1e7fe400f683880fe"
+    },
+    {
+      "path": "patches/rexglue-sdk/0048-readback-resolve-key-per-source-and-format.patch",
+      "sha256": "7cf3d9f3d45edeb56ec279f0dc2bd1a78d32dbbb372c4f1fb814c880fe2c2776"
+    },
+    {
+      "path": "patches/rexglue-sdk/0049-memexport-readback-check-after-empty-ranges.patch",
+      "sha256": "9d8444cfbb6eb431eadbf7aca0b64b68b55fdc6d2c6806df5467303b5eeba1d9"
+    },
+    {
+      "path": "patches/rexglue-sdk/0050-timer-queue-blocking-wait-on-posix.patch",
+      "sha256": "8cd0fd98900dcd0165076b7899698eaf8cf5ffbce6ba93713933345add7b2a45"
+    },
+    {
+      "path": "patches/rexglue-sdk/0051-sync-pipeline-creation.patch",
+      "sha256": "9b1a908dd026065a58bee556f5a7e75922a160e2d3abd6aa08d85cf09f165641"
+    },
+    {
+      "path": "patches/rexglue-sdk/0052-scaled-resolve-min-coverage.patch",
+      "sha256": "b17cfe08df1e72c8076b54ab3c79bc9bfbf76dc6a6dd467d81c9ab0ba28ed577"
+    },
+    {
+      "path": "patches/rexglue-sdk/0053-refresh-car-thumbnail-readbacks.patch",
+      "sha256": "16b79c335339fb5554ba0f7d384225abbeca07a3d3c07bb07fce8a2feeed5980"
+    },
+    {
+      "path": "patches/rexglue-sdk/0054-gpu-vendor-and-discrete-preference.patch",
+      "sha256": "788ff56841c157f9973536072d8d5c6a12c1b9dff7fde52c70b982638e9d2dc5"
+    },
+    {
+      "path": "patches/rexglue-sdk/0055-preserve-stencil-bits-in-depth-transfers.patch",
+      "sha256": "c694d6f6036de7b606a8ab92163b8e0f1e55a714af58332a8342a9a72cbc0ef8"
+    },
+    {
+      "path": "patches/rexglue-sdk/0057-dlss-scene-jitter-coverage.patch",
+      "sha256": "4d5a6198bda75744387a86fdf8762d13a04480da75c8808b54cc7ba15aa9e244"
+    },
+    {
+      "path": "patches/rexglue-sdk/0058-dlss-reprojection-and-tile-jitter.patch",
+      "sha256": "5dc80af20422f06beaa4873953e32cdd9857380c0c1741c931e659330c8e3012"
+    },
+    {
+      "path": "patches/rexglue-sdk/0062-sync-1x-scene-resolves-to-native-hud.patch",
+      "sha256": "a9f031f3a2cadb874cea1c5d8083f8e15282c609f69d30efbd3558192c2ef27c"
+    },
+    {
+      "path": "patches/rexglue-sdk/0063-native-ultrawide-and-hud.patch",
+      "sha256": "2e4ee796f5b7e858fc60de4206e146d0b4f47c8a1879c3ac4302e979568f43e8"
+    },
+    {
+      "path": "patches/rexglue-sdk/0064-flush-shader-cache-before-wait.patch",
+      "sha256": "afea4116458f3ae971cd813c3d6065e1d50ec863080571f6d1120eff4dc5e11c"
+    },
+    {
+      "path": "patches/rexglue-sdk/0065-skip-redundant-some-resolve-readbacks.patch",
+      "sha256": "fde0e776375ddc2359adf92bf2ca501c470ccbd96e0c57144465a75a581dac08"
+    },
+    {
+      "path": "patches/rexglue-sdk/0066-filter-car-thumbnail-samples.patch",
+      "sha256": "d946d26ff31cb2e045f694883db9a9192a9eb116a589dd91bfa6b8709aeb952e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0067-libcxx-clock-conversions.patch",
+      "sha256": "e4b66e8fd364d2c3dc58b2238353e85a140e68b33ada185a3bf5c8cb6cad7783"
+    },
+    {
+      "path": "patches/rexglue-sdk/0068-bind-scaled-resolve-window-for-readback-downscale.patch",
+      "sha256": "fbd4cbd00cba386040d6430bcdf4f224d597a487022439458665a1b429d71a3d"
+    },
+    {
+      "path": "patches/rexglue-sdk/0069-limit-nvidia-vulkan-frame-queue.patch",
+      "sha256": "89e92a67f850d7ca9e7e32bd02c07df90a45409a99aaf1a17d83ef6dcc81b6f6"
+    },
+    {
+      "path": "patches/rexglue-sdk/0070-fifo-latest-ready-present-mode.patch",
+      "sha256": "8dbdc7c96b7b99de382140821f8d8e063506f5c45c1bd8aa916b1eaaf0c7131b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0071-direct-scaled-nvidia-texture-uploads.patch",
+      "sha256": "ef591e6649097ebea873e9188b995454a91c93b0cb1ef718f017d59ee1ca357b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0072-fsr3-temporal-upscaler.patch",
+      "sha256": "a42b33ebf0ba70439cd0c3928db607cb53eff0a8c9dde42460af0da8dbac1b6a"
+    },
+    {
+      "path": "patches/rexglue-sdk/0073-fsr3-dlss-native-scene-minimum.patch",
+      "sha256": "87915ff02c1d706ad73c0b759b176cd0ecfe0ce3820182377b5f4ed1a2ce6a43"
+    },
+    {
+      "path": "patches/rexglue-sdk/0074-wheel-input-driver.patch",
+      "sha256": "285edbe912e27004861d50870a719360ed550d3f92ec2ff02f1acb5facc66c07"
+    },
+    {
+      "path": "patches/rexglue-sdk/0075-live-graphics-settings.patch",
+      "sha256": "b0e63b8c32686aab269e5b5070a0bc6b5b058fb01879a8ef909dc8e3136b7e9e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0076-vulkan-dlss-device-and-present-sync.patch",
+      "sha256": "2cff0130231f0280d0d60b6e8674d5ec2752f93279576eb59a6ccacc28a89dcf"
+    },
+    {
+      "path": "patches/rexglue-sdk/0077-smaa-scene-antialiasing.patch",
+      "sha256": "4bd3a095539ef934e0c9a252b6ae45140db51a24c0edff4de24958f5cd917f9b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0078-passive-telemetry-overlay.patch",
+      "sha256": "33a706296127a86372da3c744b22df95acccd08818d11385639992da4eae81fa"
+    },
+    {
+      "path": "patches/rexglue-sdk/0079-codegen-register-functions-from-mapping-table.patch",
+      "sha256": "e27e8338c88aa4042b95645e80b6d4b0b5b68bdb8dc8f2a1a7129521a0b9960e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0080-spirv-rectangle-loop-program-counter-phi.patch",
+      "sha256": "2e22281ba0bd5fa7727271403a4aae742bcd0c78c4ac55f6a374e4ef79e3f7a7"
+    },
+    {
+      "path": "patches/rexglue-sdk/0081-vulkan-optional-base-mip-filtering-workaround.patch",
+      "sha256": "335e49953ec66f2b03d760702e5e6eef165a1c9bf0508bad44bfcdc82554851a"
+    },
+    {
+      "path": "patches/rexglue-sdk/0082-spirv-apple-color-shader-contraction.patch",
+      "sha256": "a618ca36ce224a5d2e3578089d9f2c1ecd57e79df2ad0b24481fb82979898407"
+    },
+    {
+      "path": "patches/rexglue-sdk/0083-macos-visible-window-fullscreen.patch",
+      "sha256": "881d720a2a697b17f14785e2165e89217badc7fe1892a92acce6d3bc6c73049e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0084-macos-metalfx-gpu-reconstruction.patch",
+      "sha256": "86e9fb3a8ae59ca6b6f27a491362a69deaacfa3f9cc3319a971451abe82e033f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0085-fh1-packed-cross-scale-resolve-copy.patch",
+      "sha256": "0b309b8763e2fb68487792a08b700e775cefb49202636d913f32642d66bdc0a1"
+    },
+    {
+      "path": "patches/rexglue-sdk/0086-startup-shader-warmup-and-driver-cache.patch",
+      "sha256": "1163c824d0b865aab4d375846a52ff5a585a7feddf54a08aded5a10a5553c826"
+    },
+    {
+      "path": "patches/rexglue-sdk/0090-xbox-impulse-triggers.patch",
+      "sha256": "965b6ab94766f7856a9400d3eb805d5287a56dfb672966857fc1ec8d080d4865"
+    },
+    {
+      "path": "patches/rexglue-sdk/0091-hdr-scrgb-presenter.patch",
+      "sha256": "cacb3f3c53ea2c6b6c040c70769159a56c0ccd641c636031da94a403635be0fd"
+    },
+    {
+      "path": "patches/rexglue-sdk/0095-codegen-multiply-add-without-fma.patch",
+      "sha256": "510b2793d36545e55f1c8e73bf2e82a17c56f565ae705ece6b52aa0c23f09aac"
+    },
+    {
+      "path": "patches/rexglue-sdk/0096-codegen-headers-as-outputs.patch",
+      "sha256": "7004723a2933b46ac467f2d21b6e697acc7bb07bfc22f225c592107c18a59cc6"
+    },
+    {
+      "path": "patches/rexglue-sdk/0097-vfs-host-errors-not-exceptions.patch",
+      "sha256": "d79ad499d488312436ac0b520923564e91222532c4b0974cf703d61fd7cdf36f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0098-hdr-menu-background-snapshot.patch",
+      "sha256": "5ae47ff0253f7c642b9decbd41d42222fe1e9996fc09147a3fb0fa95e08dddc5"
+    },
+    {
+      "path": "patches/rexglue-sdk/0099-wheel-clutch-and-shifter.patch",
+      "sha256": "babd2ae722acc03c40e7074721c4f73e4f0da545e74c5cf4d0aaedf104bafa5b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0100-correct-cross-scale-resolve-layout.patch",
+      "sha256": "987f22f308c464a32ecaf3a576f151b6aae7cd4d4c657389a6f347a34011bc4e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0101-wheel-game-force-feedback.patch",
+      "sha256": "866ba50c595046b653d3799e163ca6979f2cf52899dbc80b052e6e407349f921"
+    },
+    {
+      "path": "patches/rexglue-sdk/0102-pipeline-store-keeps-valid-records.patch",
+      "sha256": "52a01814c60d94cac7b3a77c2144aa502c963153b9f512d13b65b8f56d6f3649"
+    },
+    {
+      "path": "patches/rexglue-sdk/0103-audio-output-fallback.patch",
+      "sha256": "ce7a689682b7976aae9df29f424953124528744543ed9a098ea39a4183cfefc7"
+    },
+    {
+      "path": "patches/rexglue-sdk/0104-vulkan-device-loss-diagnostics.patch",
+      "sha256": "4eaa8854266e99acc396d9d5b386072fc7a5d555bbf9a271fde8687a7ed60b08"
+    },
+    {
+      "path": "patches/rexglue-sdk/0105-xma-unreadable-input-and-locked-contexts.patch",
+      "sha256": "33c29f7a1a4004e02c39d30884c1c4d7168f4daf2277095900880b18efcaba60"
+    },
+    {
+      "path": "patches/rexglue-sdk/0112-vulkan-trim-render-targets-when-memory-is-full.patch",
+      "sha256": "5afa410337bb6c032263455a72e7644232352bb3e95ccc20479fd84031ccb58e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0113-shader-prebuild-import.patch",
+      "sha256": "84d70e1d8640693359a09b344c75b6d53c1264aed122bbf4c30f2abeb853932d"
+    },
+    {
+      "path": "patches/rexglue-sdk/0114-wait-wakes-only-its-waiters.patch",
+      "sha256": "edbb626c264ecce321f0ac170e7d310bee526ddd0cf0f755f95e91ebcb1b2838"
+    },
+    {
+      "path": "patches/rexglue-sdk/0115-cp-wakes-waiters-on-written-words.patch",
+      "sha256": "12dfc41d7fe591945f929149c5f14f0c0690c05558855ca137fe8d75994f0063"
+    },
+    {
+      "path": "patches/rexglue-sdk/0116-controller-remap.patch",
+      "sha256": "7a6ba40e30c5467e2d15a321b6b2a3ab85d7bed53adaeb76b0782eb47ba62c62"
+    },
+    {
+      "path": "patches/rexglue-sdk/0127-wheel-dpad-bindings-replace-the-hat.patch",
+      "sha256": "71daa821fabb0b6b7b63c08591c03f5b3186f73f86c098dd2f2f0a85b0337d60"
+    },
+    {
+      "path": "patches/rexglue-sdk/0128-wheel-pedal-and-shifter-devices.patch",
+      "sha256": "548d23adb73eaf28b7e9a9844efe3974a0758d9a4cdd227551841ebfcc5bb4a6"
+    },
+    {
+      "path": "patches/rexglue-sdk/0129-wheel-fine-rumble.patch",
+      "sha256": "07142ba9ff7b68f3374efd8b957a2218643f064069a9aab236a69c3b41782d36"
+    },
+    {
+      "path": "patches/rexglue-sdk/0130-wheel-forces-back-whole.patch",
+      "sha256": "5a73766f2a2a3e899e5d928eb69cff0d1be0369bb06184a967a749dd9f3ffa5e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0131-wheel-minimum-force.patch",
+      "sha256": "168da90ad7650b0bc5256902ba55d226def90ca35dd66cac0a04225181e7f2bd"
+    },
+    {
+      "path": "patches/rexglue-sdk/0132-wheel-shifter-gear-on-lever-moves.patch",
+      "sha256": "46d3addc8303dcb213189387dbe108e1ae02ff4d02f78f57019012d73584240a"
+    },
+    {
+      "path": "patches/rexglue-sdk/0133-wheel-analog-handbrake.patch",
+      "sha256": "c6f13a346370f5063363f58cdf1c828dc4dbebd2e164eeb43a41a606f1e4074b"
+    },
+    {
+      "path": "patches/rexglue-sdk/0134-wheel-primary-device.patch",
+      "sha256": "c54a2543c07de77a56a3cbd72919ef2c4cf156cb0a3e6bbfddffb04f43665861"
+    },
+    {
+      "path": "patches/rexglue-sdk/0135-wheel-thrustmaster-profiles.patch",
+      "sha256": "01d5e127f386ff80ec2537d78a10a06aa38182a772b0b4fe7fbcb71dd2226f3c"
+    },
+    {
+      "path": "patches/rexglue-sdk/0136-wheel-refused-effects.patch",
+      "sha256": "1e0cf14a3d74a52bf2572460e4e20fab1d5564836553817fc95516050884a180"
+    },
+    {
+      "path": "patches/rexglue-sdk/0137-wheel-vjoy-sdl-name-alias.patch",
+      "sha256": "54ae30446e7c083cbfae99b31de07370ed6b1d27c4ba01728639e7471305d1de"
+    },
+    {
+      "path": "patches/rexglue-sdk/0138-vulkan-integrated-gpu-memory-placement.patch",
+      "sha256": "82aa1cf249d9254cacb36ca6a17f32cbe9930dbd4a0712e34162c353f56ff8a2"
+    },
+    {
+      "path": "patches/rexglue-sdk/0140-command-processor-packet-fast-paths.patch",
+      "sha256": "644723b3818002935f494544c23f2755cab26111e7a439882208ea7d5af8166f"
+    },
+    {
+      "path": "patches/rexglue-sdk/0145-wheel-force-feedback-log.patch",
+      "sha256": "68e2de665cd140604ff903a6a30cd4367c6c5328771cc0571026ff6be7a517f3"
+    },
+    {
+      "path": "patches/rexglue-sdk/0146-wheel-effects-keep-playing.patch",
+      "sha256": "757518f003de7747b2edd96e5032b4a307c66916533da024300700dccd1fb146"
+    },
+    {
+      "path": "patches/rexglue-sdk/0149-thumbnail-resolve-quad-filter.patch",
+      "sha256": "58f6e92b968c5003e69dd715ce2953c825632be40d896e2d81867b1235b754e9"
+    },
+    {
+      "path": "patches/rexglue-sdk/0150-offscreen-fractional-raster.patch",
+      "sha256": "35f7a33987f34e85c8d2440ce1542afbf187ea6aa74bbe6511128448b2b8849d"
+    },
+    {
+      "path": "patches/rexglue-sdk/0180-frame-cost-log.patch",
+      "sha256": "4ad4526466cc3e1cf86f9cd8d3cf61316e3a613f686021a823550dd1a03c1f45"
+    },
+    {
+      "path": "patches/rexglue-sdk/0181-readback-skip-scene-render-targets.patch",
+      "sha256": "7650bc6518e567ffc3b6a1e7ee7363998d572f800ef5cd7f87f00d09be4bb453"
+    },
+    {
+      "path": "patches/rexglue-sdk/0200-minute-summary-log.patch",
+      "sha256": "2f9d2493348c4a5413f2dcfdae10e5927f6f6b0963ecb0d2bcd77d059c89d54e"
+    },
+    {
+      "path": "patches/rexglue-sdk/0210-affinity-warning-once.patch",
+      "sha256": "d859414b42b51de82ad073a673cfb363c3266e264a49aba90365c2767c7813d6"
+    },
+    {
+      "path": "patches/rexglue-sdk/0230-integrated-gpu-headroom-and-submission-split.patch",
+      "sha256": "a6d24a9c3d08f55a75849e3909e5a375aeb75e64b0e6d2168585e4a27500eb6c"
+    },
+    {
+      "path": "patches/rexglue-sdk/0290-presenter-reconnect-after-restore.patch",
+      "sha256": "a413729cd3ca7f37064a852028384d8956fb085fc5d5c7cefdb90ec4c3f15a50"
+    }
+  ],
+  "asahiPatches": [
+    {
+      "path": "tools/asahi-sdk-lab/experimental-sdk.patch",
+      "sha256": "6a082ce0760569bb858d337952bf171181048dd28d0836352ea4210f075f1ff3"
+    },
+    {
+      "path": "tools/asahi-sdk-lab/memexport-compute-sdk.patch",
+      "sha256": "1f4f3611b76f07327b304e041ac01eec205b612ff50928c6d2706a3a2ec94db0"
+    },
+    {
+      "path": "tools/asahi-sdk-lab/linux-16k-sdk.patch",
+      "sha256": "5b917927550d00541a0feb9e7012bcbe7bec52037241be9b45426abe2a27679a"
+    }
+  ],
+  "sdlPatches": [
+    {
+      "path": "patches/rexglue-sdk/sdl3/0147-sdl-haptic-endless-effects.patch",
+      "sha256": "89461a3f59016f63df916b240bf2c17b296274bc1cc72c966ba905f50a951cd5"
+    }
+  ],
+  "submodules": [
+    {
+      "path": "thirdparty/FFmpeg",
+      "commit": "0604b464c7cb4ebc94940cf1f324a3b26b87717c"
+    },
+    {
+      "path": "thirdparty/catch2",
+      "commit": "88abf9bf325c798c33f54f6b9220ef885b267f4f"
+    },
+    {
+      "path": "thirdparty/cli11",
+      "commit": "bfffd37e1f804ca4fae1caae106935791696b6a9"
+    },
+    {
+      "path": "thirdparty/fmt",
+      "commit": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f"
+    },
+    {
+      "path": "thirdparty/glslang",
+      "commit": "f4f1d8a352ca1908943aea2ad8c54b39b4879080"
+    },
+    {
+      "path": "thirdparty/imgui",
+      "commit": "6d910d5487d11ca567b61c7824b0c78c569d62f0"
+    },
+    {
+      "path": "thirdparty/inja",
+      "commit": "7d1b4600b68595085a949743331c2e5673f511ea"
+    },
+    {
+      "path": "thirdparty/libmspack",
+      "commit": "305907723a4e7ab2018e58040059ffb5e77db837"
+    },
+    {
+      "path": "thirdparty/moltenvk",
+      "commit": "701747d61a0484e91c205e081a24ca592ffa12b4"
+    },
+    {
+      "path": "thirdparty/o1heap",
+      "commit": "388a73fd9007300e5130c5fe352d9ce3288b6dde"
+    },
+    {
+      "path": "thirdparty/sdl3",
+      "commit": "147a8ee32dbf9ac02f3794964490687b6bbda1bc"
+    },
+    {
+      "path": "thirdparty/simde",
+      "commit": "71fd833d9666141edcd1d3c109a80e228303d8d7"
+    },
+    {
+      "path": "thirdparty/simde/test/munit",
+      "commit": "da8f73412998e4f1adf1100dc187533a51af77fd"
+    },
+    {
+      "path": "thirdparty/spdlog",
+      "commit": "79524ddd08a4ec981b7fea76afd08ee05f83755d"
+    },
+    {
+      "path": "thirdparty/spirv-headers",
+      "commit": "29981f65241605e08b0ede4cfeb999fe3b723c6a"
+    },
+    {
+      "path": "thirdparty/spirv-tools",
+      "commit": "9a49b0883b9b635689a85b5647dbfcb223268151"
+    },
+    {
+      "path": "thirdparty/tomlplusplus",
+      "commit": "30172438cee64926dc41fdd9c11fb3ba5b2ba9de"
+    },
+    {
+      "path": "thirdparty/tracy",
+      "commit": "05cceee0df3b8d7c6fa87e9638af311dbabc63cb"
+    },
+    {
+      "path": "thirdparty/utfcpp",
+      "commit": "63d64de49fd6b829f7c8694df5ab2ee625cb7134"
+    },
+    {
+      "path": "thirdparty/vulkan-headers",
+      "commit": "e3b1eec08173d6b825cd3ac88c885a63b621504a"
+    },
+    {
+      "path": "thirdparty/vulkan-loader",
+      "commit": "5f157b62e333c63260d05d81bf66faa216ab0fb8"
+    },
+    {
+      "path": "thirdparty/vulkan-memory-allocator",
+      "commit": "1d8f600fd424278486eade7ed3e877c99f0846b1"
+    },
+    {
+      "path": "thirdparty/xxHash",
+      "commit": "e626a72bc2321cd320e953a0ccf1584cad60f363"
+    }
+  ]
+}
