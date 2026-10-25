@@ -22,6 +22,10 @@ The backup is a separate local Btrfs reflink copy; it protects against subsequen
 file edits but is not an off-machine disaster-recovery copy. Its private manifests
 and configuration inventory are intentionally outside this Git repository.
 
+A final preservation check rehashed **31,762 original laboratory, generated-code
+and extracted-data files** against the pre-edit manifest, excluding Git internal
+metadata: zero differences. The functional original was not rebuilt or reorganized.
+
 ## Complete source reconstruction
 
 `sdk.py verify` compares every expected tracked source and unexpected untracked
@@ -85,6 +89,44 @@ without manual repair, reproduced all trees and the expected version description
 made while the smoke test's suspension marker remained in place; the GPU results
 above are from the identical patched source tree before version metadata repair.
 
+### Final local checks
+
+- Nine preparation/publication-boundary tests passed in the clean clone.
+- Nineteen launcher policy/update/TLS tests passed; twelve Qt tests were explicitly
+  skipped because PySide6 is unavailable. Mocked network tests perform no downloads.
+- `verify_artifacts.py` verified all five private ELF outputs as AArch64, LOAD
+  alignment 65536, RELRO and non-executable stack. The runtime resolves from the
+  new game directory, and staged runtime/plugin hashes match the new SDK install.
+- Binary hashes are recorded independently in private `artifact-verification.json`.
+  This establishes source/functional reconstruction, not a claim that outputs from
+  different build directories are byte-identical to the old binaries.
+- The source audit passed for 869 tracked files and 52 added/modified delta paths,
+  preserving seven historical upstream image/logo files. A local `git archive` was
+  checked byte for byte against every committed source member; no private build or
+  laboratory output was included. The final archive is re-audited after the closing
+  documentation commit.
+
+## Local Git handoff
+
+The working repository is on `asahi`. Its remotes are `origin` (the kurai021 fork)
+and `upstream` (Dyotson's project). Local `main` remains at `43b64ae`, tracking
+`upstream/main`; no port commit was added to `main`.
+
+The implementation is organized in these local commits, followed by the closing
+verification report commit:
+
+| Commit | Scope |
+| --- | --- |
+| `bfa2cd0` | ARM64 integration and the three byte-exact SDK patches |
+| `46b7069` | Preserved laboratory, pinned preparation, regression tools and phase reports |
+| `df1573e` | SDK version ancestry preservation and its regression |
+| `3af8057` | Source publication audit, fork documentation, workflow quarantine and updater policy |
+
+Private source-archive/bundle exports and the final reconstructed laboratory are
+retained alongside the local backup. Neither these private backups nor commercial
+inputs are Git publication artifacts. No remote push, release or tag creation
+was performed; `asahi-experimental-1` remains the proposed next reference.
+
 Raw evidence and captures remain private under the clean clone's ignored `out/`.
 These are reproduction checks, not additional performance benchmarks.
 
@@ -112,7 +154,7 @@ further GPU tests require separate authorization.
 
 ## Pending before any remote publication
 
-1. Present/review the final local commits, source inventory and archive audit.
+1. Owner review of the final local commits, source inventory and archive audit.
 2. Authorize any further GPU smoke tests separately.
 3. Validate launcher UI behavior with PySide6: the core policy tests pass locally,
    but this environment does not currently provide PySide6 for Qt integration tests.
