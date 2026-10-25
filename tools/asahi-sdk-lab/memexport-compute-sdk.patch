@@ -1,0 +1,641 @@
+diff --git a/include/rex/graphics/pipeline/shader/spirv_translator.h b/include/rex/graphics/pipeline/shader/spirv_translator.h
+index 072ecf6..1bb0f60 100644
+--- a/include/rex/graphics/pipeline/shader/spirv_translator.h
++++ b/include/rex/graphics/pipeline/shader/spirv_translator.h
+@@ -71,6 +71,8 @@ class SpirvShaderTranslator : public ShaderTranslator {
+       Shader::HostVertexShaderType host_vertex_shader_type : Shader::kHostVertexShaderTypeBitCount;
+       // For domain host vertex shader types only, xenos::TessellationMode.
+       uint32_t tessellation_mode : 2;
++      // Experimental compute dispatch: original DMA indices are snapshotted.
++      uint32_t compute_index_snapshot : 1;
+     } vertex;
+     struct PixelShaderModification {
+       // uint32_t 0.
+@@ -673,6 +675,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
+   spv::Id EndianSwap128Uint4(spv::Id value, spv::Id endian);
+ 
+   spv::Id LoadUint32FromSharedMemory(spv::Id address_dwords_int);
++  spv::Id LoadComputeIndexDword(spv::Id address_dwords_int);
+   // If `replace_mask` is provided, the bits specified in the mask will be
+   // replaced with those from the value via OpAtomicAnd/Or.
+   // Bits of `value` not in `replace_mask` will be ignored.
+@@ -904,6 +907,7 @@ class SpirvShaderTranslator : public ShaderTranslator {
+   spv::Id uniform_fetch_constants_;
+ 
+   spv::Id buffers_shared_memory_;
++  spv::Id buffer_compute_indices_ = spv::NoResult;
+   spv::Id buffer_edram_;
+ 
+   // Not using combined images and samplers because
+diff --git a/include/rex/graphics/vulkan/command_processor.h b/include/rex/graphics/vulkan/command_processor.h
+index b0f9ecd..94278b7 100644
+--- a/include/rex/graphics/vulkan/command_processor.h
++++ b/include/rex/graphics/vulkan/command_processor.h
+@@ -18,6 +18,7 @@
+ #include <deque>
+ #include <functional>
+ #include <memory>
++#include <map>
+ #include <mutex>
+ #include <string>
+ #include <string_view>
+@@ -51,12 +52,16 @@ namespace rex::graphics::vulkan {
+ class Fh1Dlss;
+ 
+ class VulkanCommandProcessor : public CommandProcessor {
++#ifdef REX_ASAHI_SDK_LAB
++  friend struct AsahiSdkLabAccess;
++#endif
+  public:
+   // Single-descriptor layouts for use within a single frame.
+   enum class SingleTransientDescriptorLayout {
+     kStorageBufferCompute,
+     kStorageBufferPairCompute,
+     kStorageImageCompute,
++    kMemexportCompute,
+     kCount,
+   };
+ 
+@@ -494,6 +499,10 @@ class VulkanCommandProcessor : public CommandProcessor {
+   bool IssueCopy_ReadbackResolvePath();
+   bool IssueDraw_MemexportReadbackFullPath(uint32_t total_size);
+   bool IssueDraw_MemexportReadbackFastPath(uint32_t total_size);
++  bool IssueDrawMemexportCompute(VulkanShader* shader,
++      const PrimitiveProcessor::ProcessingResult& primitives, VkBuffer indices,
++      VkDeviceSize index_size, uint32_t index_base);
++  std::map<std::pair<uint64_t, uint64_t>, VkPipeline> memexport_compute_pipelines_;
+ 
+   void SplitPendingBarrier();
+ 
+diff --git a/include/rex/graphics/vulkan/render_target_cache.h b/include/rex/graphics/vulkan/render_target_cache.h
+index 36b1980..59716f7 100644
+--- a/include/rex/graphics/vulkan/render_target_cache.h
++++ b/include/rex/graphics/vulkan/render_target_cache.h
+@@ -32,6 +32,9 @@ namespace rex::graphics::vulkan {
+ class VulkanCommandProcessor;
+ 
+ class VulkanRenderTargetCache final : public RenderTargetCache {
++#ifdef REX_ASAHI_SDK_LAB
++  friend struct AsahiSdkLabAccess;
++#endif
+  public:
+   union RenderPassKey {
+     struct {
+diff --git a/src/graphics/pipeline/shader/spirv_translator.cpp b/src/graphics/pipeline/shader/spirv_translator.cpp
+index 29fb9db..0b8dd10 100644
+--- a/src/graphics/pipeline/shader/spirv_translator.cpp
++++ b/src/graphics/pipeline/shader/spirv_translator.cpp
+@@ -166,6 +166,7 @@ void SpirvShaderTranslator::Reset() {
+   }
+   var_main_memexport_data_written_ = spv::NoResult;
+   main_memexport_allowed_ = spv::NoResult;
++  buffer_compute_indices_ = spv::NoResult;
+   var_main_rectangle_guest_vertex_index_ = spv::NoResult;
+   var_main_rectangle_per_vertex_ = spv::NoResult;
+   std::fill(var_main_rectangle_clip_distances_.begin(), var_main_rectangle_clip_distances_.end(),
+@@ -485,6 +486,23 @@ void SpirvShaderTranslator::StartTranslation() {
+     if (features_.spirv_version >= spv::Spv_1_4) {
+       main_interface_.push_back(buffers_shared_memory_);
+     }
++    if (IsSpirvComputeShader() && GetSpirvShaderModification().vertex.compute_index_snapshot) {
++      std::vector<spv::Id> members{builder_->makeRuntimeArray(type_uint_)};
++      builder_->addDecoration(members[0], spv::DecorationArrayStride, 4);
++      spv::Id indices = builder_->makeStructType(members, "XeComputeIndices");
++      builder_->addMemberDecoration(indices, 0, spv::DecorationOffset, 0);
++      builder_->addMemberDecoration(indices, 0, spv::DecorationNonWritable);
++      builder_->addDecoration(indices, features_.spirv_version >= spv::Spv_1_3
++          ? spv::DecorationBlock : spv::DecorationBufferBlock);
++      buffer_compute_indices_ = builder_->createVariable(spv::NoPrecision,
++          features_.spirv_version >= spv::Spv_1_3 ? spv::StorageClassStorageBuffer
++                                                : spv::StorageClassUniform,
++          indices, "xe_compute_indices");
++      builder_->addDecoration(buffer_compute_indices_, spv::DecorationDescriptorSet,
++                             int(kDescriptorSetSharedMemoryAndEdram));
++      builder_->addDecoration(buffer_compute_indices_, spv::DecorationBinding, 2);
++      if (features_.spirv_version >= spv::Spv_1_4) main_interface_.push_back(buffer_compute_indices_);
++    }
+   }
+ 
+   if (is_vertex_shader()) {
+@@ -2202,7 +2220,7 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
+                     builder_->createTriOp(spv::OpSelect, type_uint_, compute_vertex_index_is_32bit,
+                                           builder_->makeUintConstant(2),
+                                           builder_->makeUintConstant(1))));
+-            loaded_vertex_index = LoadUint32FromSharedMemory(builder_->createUnaryOp(
++            loaded_vertex_index = LoadComputeIndexDword(builder_->createUnaryOp(
+                 spv::OpBitcast, type_int_,
+                 builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, vertex_index_address,
+                                       builder_->makeUintConstant(2))));
+@@ -2373,7 +2391,7 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
+                     builder_->createTriOp(spv::OpSelect, type_uint_, compute_vertex_index_is_32bit,
+                                           builder_->makeUintConstant(2),
+                                           builder_->makeUintConstant(1))));
+-            loaded_vertex_index = LoadUint32FromSharedMemory(builder_->createUnaryOp(
++            loaded_vertex_index = LoadComputeIndexDword(builder_->createUnaryOp(
+                 spv::OpBitcast, type_int_,
+                 builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, vertex_index_address,
+                                       builder_->makeUintConstant(2))));
+@@ -3750,6 +3768,14 @@ void SpirvShaderTranslator::StoreResult(const InstructionResult& result, spv::Id
+   if (!used_write_mask) {
+     return;
+   }
++  // The compute half produces memory side effects, not raster outputs. Those
++  // are emitted by the ordinary VS half; no output_per_vertex_ exists here.
++  if (IsSpirvComputeShader() &&
++      (result.storage_target == InstructionStorageTarget::kPosition ||
++       result.storage_target == InstructionStorageTarget::kInterpolator ||
++       result.storage_target == InstructionStorageTarget::kPointSizeEdgeFlagKillVertex)) {
++    return;
++  }
+   bool is_clamped = result.is_clamped;
+ 
+   EnsureBuildPointAvailable();
+@@ -4191,6 +4217,20 @@ spv::Id SpirvShaderTranslator::EndianSwap128Uint4(spv::Id value, spv::Id endian)
+   return EndianSwap32Uint(value, endian);
+ }
+ 
++spv::Id SpirvShaderTranslator::LoadComputeIndexDword(spv::Id address_dwords_int) {
++  if (buffer_compute_indices_ == spv::NoResult) return LoadUint32FromSharedMemory(address_dwords_int);
++  std::vector<spv::Id> member{builder_->makeIntConstant(kSystemConstantVertexIndexLoadAddress)};
++  spv::Id base = builder_->createLoad(builder_->createAccessChain(
++      spv::StorageClassUniform, uniform_system_constants_, member), spv::NoPrecision);
++  base = builder_->createBinOp(spv::OpShiftRightLogical, type_uint_, base, builder_->makeUintConstant(2));
++  spv::Id relative = builder_->createBinOp(spv::OpISub, type_int_, address_dwords_int,
++      builder_->createUnaryOp(spv::OpBitcast, type_int_, base));
++  member = {const_int_0_, relative};
++  return builder_->createLoad(builder_->createAccessChain(
++      features_.spirv_version >= spv::Spv_1_3 ? spv::StorageClassStorageBuffer : spv::StorageClassUniform,
++      buffer_compute_indices_, member), spv::NoPrecision);
++}
++
+ spv::Id SpirvShaderTranslator::LoadUint32FromSharedMemory(spv::Id address_dwords_int) {
+   spv::StorageClass storage_class = features_.spirv_version >= spv::Spv_1_3
+                                         ? spv::StorageClassStorageBuffer
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index c672dfb..28e478a 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -109,6 +109,10 @@ REXCVAR_DEFINE_BOOL(vulkan_readback_resolve, false, "GPU/Vulkan",
+                     "Read render-to-texture results on the CPU")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+ 
++REXCVAR_DEFINE_BOOL(vulkan_memexport_compute, false, "GPU/Vulkan",
++    "Experimental vertex memexport via compute after rasterization; unsupported variants fail closed")
++    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
++
+ REXCVAR_DEFINE_BOOL(vulkan_readback_memexport, false, "GPU/Vulkan",
+                     "Read data written by memory export in shaders on the CPU")
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+@@ -1582,7 +1586,8 @@ bool VulkanCommandProcessor::SetupContext() {
+       REXGPU_ERROR("Vulkan vertexPipelineStoresAndAtomics required by startup policy");
+       return false;
+     }
+-    REXGPU_WARN("ASAHI AUDIT: vertex stores unavailable; vertex memexport draws remain rejected");
++    REXGPU_WARN("ASAHI AUDIT: vertex stores unavailable; compute fallback={}, unsupported draws remain rejected",
++                REXCVAR_GET(vulkan_memexport_compute));
+   }
+   if (!device_properties.geometryShader) {
+     if (REXCVAR_GET(vulkan_require_geometry_shader)) {
+@@ -1627,7 +1632,7 @@ bool VulkanCommandProcessor::SetupContext() {
+   // Shared memory and EDRAM descriptor set layout.
+   bool edram_fragment_shader_interlock =
+       render_target_cache_->GetPath() == RenderTargetCache::Path::kPixelShaderInterlock;
+-  VkDescriptorSetLayoutBinding shared_memory_and_edram_descriptor_set_layout_bindings[2];
++  VkDescriptorSetLayoutBinding shared_memory_and_edram_descriptor_set_layout_bindings[3];
+   shared_memory_and_edram_descriptor_set_layout_bindings[0].binding = 0;
+   shared_memory_and_edram_descriptor_set_layout_bindings[0].descriptorType =
+       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+@@ -1655,6 +1660,14 @@ bool VulkanCommandProcessor::SetupContext() {
+   } else {
+     shared_memory_and_edram_descriptor_set_layout_create_info.bindingCount = 1;
+   }
++  if (REXCVAR_GET(vulkan_memexport_compute)) {
++    auto& snapshot = shared_memory_and_edram_descriptor_set_layout_bindings[
++        shared_memory_and_edram_descriptor_set_layout_create_info.bindingCount++];
++    snapshot = {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
++    if (dfn.vkCreateDescriptorSetLayout(device, &shared_memory_and_edram_descriptor_set_layout_create_info,
++          nullptr, &descriptor_set_layouts_single_transient_[size_t(SingleTransientDescriptorLayout::kMemexportCompute)]) != VK_SUCCESS)
++      return false;
++  }
+   if (dfn.vkCreateDescriptorSetLayout(
+           device, &shared_memory_and_edram_descriptor_set_layout_create_info, nullptr,
+           &descriptor_set_layout_shared_memory_and_edram_) != VK_SUCCESS) {
+@@ -1671,7 +1684,8 @@ bool VulkanCommandProcessor::SetupContext() {
+   VkDescriptorPoolSize descriptor_pool_sizes[1];
+   descriptor_pool_sizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+   descriptor_pool_sizes[0].descriptorCount =
+-      shared_memory_binding_count + uint32_t(edram_fragment_shader_interlock);
++      shared_memory_binding_count + uint32_t(edram_fragment_shader_interlock) +
++      uint32_t(REXCVAR_GET(vulkan_memexport_compute));
+   VkDescriptorPoolCreateInfo descriptor_pool_create_info;
+   descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+   descriptor_pool_create_info.pNext = nullptr;
+@@ -1710,7 +1724,7 @@ bool VulkanCommandProcessor::SetupContext() {
+     shared_memory_descriptor_buffer_info.offset = shared_memory_binding_range * i;
+     shared_memory_descriptor_buffer_info.range = shared_memory_binding_range;
+   }
+-  VkWriteDescriptorSet write_descriptor_sets[2];
++  VkWriteDescriptorSet write_descriptor_sets[3];
+   VkWriteDescriptorSet& write_descriptor_set_shared_memory = write_descriptor_sets[0];
+   write_descriptor_set_shared_memory.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+   write_descriptor_set_shared_memory.pNext = nullptr;
+@@ -1739,8 +1753,18 @@ bool VulkanCommandProcessor::SetupContext() {
+     write_descriptor_set_edram.pBufferInfo = &edram_descriptor_buffer_info;
+     write_descriptor_set_edram.pTexelBufferView = nullptr;
+   }
+-  dfn.vkUpdateDescriptorSets(device, 1 + uint32_t(edram_fragment_shader_interlock),
+-                             write_descriptor_sets, 0, nullptr);
++  VkDescriptorBufferInfo unused_snapshot{shared_memory_->buffer(), 0, 4};
++  if (REXCVAR_GET(vulkan_memexport_compute)) {
++    auto& write = write_descriptor_sets[1 + uint32_t(edram_fragment_shader_interlock)];
++    write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
++    write.dstSet = shared_memory_and_edram_descriptor_set_;
++    write.dstBinding = 2; write.descriptorCount = 1;
++    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
++    write.pBufferInfo = &unused_snapshot;
++  }
++  dfn.vkUpdateDescriptorSets(device, 1 + uint32_t(edram_fragment_shader_interlock) +
++                              uint32_t(REXCVAR_GET(vulkan_memexport_compute)),
++                              write_descriptor_sets, 0, nullptr);
+ 
+   // Swap objects.
+ 
+@@ -2698,6 +2722,9 @@ void VulkanCommandProcessor::ShutdownContext() {
+   const VkDevice device = vulkan_device->device();
+ 
+   DestroyScratchBuffer();
++  for (const auto& entry : memexport_compute_pipelines_)
++    dfn.vkDestroyPipeline(device, entry.second, nullptr);
++  memexport_compute_pipelines_.clear();
+ 
+   for (auto& readback_pair : readback_buffers_) {
+     ReadbackBuffer& readback = readback_pair.second;
+@@ -4496,6 +4523,7 @@ VkDescriptorSet VulkanCommandProcessor::AllocateSingleTransientDescriptor(
+         transient_descriptor_layout == SingleTransientDescriptorLayout::kStorageImageCompute;
+     bool is_storage_buffer =
+         transient_descriptor_layout == SingleTransientDescriptorLayout::kStorageBufferCompute ||
++        transient_descriptor_layout == SingleTransientDescriptorLayout::kMemexportCompute ||
+         transient_descriptor_layout == SingleTransientDescriptorLayout::kStorageBufferPairCompute;
+     ui::vulkan::LinkedTypeDescriptorSetAllocator& transient_descriptor_allocator =
+         is_storage_image    ? transient_descriptor_allocator_storage_image_
+@@ -4509,6 +4537,11 @@ VkDescriptorSet VulkanCommandProcessor::AllocateSingleTransientDescriptor(
+         transient_descriptor_layout == SingleTransientDescriptorLayout::kStorageBufferPairCompute
+             ? 2
+             : 1;
++    if (transient_descriptor_layout == SingleTransientDescriptorLayout::kMemexportCompute) {
++      descriptor_count.descriptorCount = (1u << SpirvShaderTranslator::GetSharedMemoryStorageBufferCountLog2(
++          vulkan_device->properties().maxStorageBufferRange)) + 1u +
++          uint32_t(render_target_cache_->GetPath() == RenderTargetCache::Path::kPixelShaderInterlock);
++    }
+     descriptor_set = transient_descriptor_allocator.Allocate(
+         GetSingleTransientDescriptorLayout(transient_descriptor_layout), &descriptor_count, 1);
+     if (descriptor_set == VK_NULL_HANDLE) {
+@@ -4688,7 +4721,8 @@ VulkanCommandProcessor::ScratchBufferAcquisition VulkanCommandProcessor::Acquire
+   // texture loading.
+   if (!ui::vulkan::util::CreateDedicatedAllocationBuffer(
+           vulkan_device, size,
+-          VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
++          VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
++              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+           ui::vulkan::util::MemoryPurpose::kDeviceLocal, new_scratch_buffer,
+           new_scratch_buffer_memory)) {
+     REXGPU_ERROR("VulkanCommandProcessor: Failed to create a {} MB scratch GPU buffer", size >> 20);
+@@ -4717,8 +4751,8 @@ VulkanCommandProcessor::ScratchBufferAcquisition VulkanCommandProcessor::Acquire
+   scratch_buffer_ = new_scratch_buffer;
+   scratch_buffer_size_ = size;
+   // Not used yet, no need for a barrier.
+-  scratch_buffer_last_stage_mask_ = initial_access_mask;
+-  scratch_buffer_last_access_mask_ = initial_stage_mask;
++  scratch_buffer_last_stage_mask_ = initial_stage_mask;
++  scratch_buffer_last_access_mask_ = initial_access_mask;
+   scratch_buffer_last_usage_submission_ = submission_current;
+   scratch_buffer_used_ = true;
+   return ScratchBufferAcquisition(*this, new_scratch_buffer, initial_stage_mask,
+@@ -5054,6 +5088,100 @@ void VulkanCommandProcessor::Fh1SelectNativeHud(bool native_hud) {
+   current_graphics_descriptor_sets_bound_up_to_date_ = 0;
+ }
+ 
++bool VulkanCommandProcessor::IssueDrawMemexportCompute(VulkanShader* shader,
++    const PrimitiveProcessor::ProcessingResult& primitives, VkBuffer indices,
++    VkDeviceSize index_size, uint32_t index_base) {
++  auto modification = pipeline_cache_->GetCurrentVertexShaderModification(
++      *shader, Shader::HostVertexShaderType::kMemExportCompute, 0, false);
++  modification.vertex.compute_index_snapshot = true;
++  auto* translation = static_cast<VulkanShader::VulkanTranslation*>(
++      shader->GetOrCreateTranslation(modification.value));
++  if (!pipeline_cache_->EnsureShadersTranslated(translation, nullptr)) return false;
++  auto key = std::make_pair(shader->ucode_data_hash(), modification.value);
++  VkPipeline& pipeline = memexport_compute_pipelines_[key];
++  if (!pipeline) {
++    pipeline = ui::vulkan::util::CreateComputePipeline(GetVulkanDevice(),
++        current_guest_graphics_pipeline_layout_->GetPipelineLayout(),
++        translation->GetOrCreateShaderModule());
++    if (!pipeline) return false;
++  }
++
++  // Use immutable per-dispatch descriptors, reclaimed through the normal frame
++  // fence path. Updating the common set in-place would race earlier submissions.
++  VkDescriptorSet snapshot = AllocateSingleTransientDescriptor(SingleTransientDescriptorLayout::kMemexportCompute);
++  if (!snapshot) return false;
++  const auto* gpu = GetVulkanDevice();
++  const auto& f = gpu->functions();
++  VkCopyDescriptorSet copy{VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET};
++  copy.srcSet = shared_memory_and_edram_descriptor_set_; copy.dstSet = snapshot;
++  copy.descriptorCount = 1u << SpirvShaderTranslator::GetSharedMemoryStorageBufferCountLog2(
++      gpu->properties().maxStorageBufferRange);
++  f.vkUpdateDescriptorSets(gpu->device(), 0, nullptr, 1, &copy);
++  VkDescriptorBufferInfo snapshot_info{indices ? indices : shared_memory_->buffer(), 0,
++                                      indices ? index_size : 4};
++  VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
++  write.dstSet = snapshot; write.dstBinding = 2; write.descriptorCount = 1;
++  write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; write.pBufferInfo = &snapshot_info;
++  f.vkUpdateDescriptorSets(gpu->device(), 1, &write, 0, nullptr);
++
++  const auto saved_system = system_constants_;
++  auto initiator = register_file_->Get<reg::VGT_DRAW_INITIATOR>();
++  const bool dma = initiator.source_select == xenos::SourceSelect::kDMA;
++  system_constants_.flags &= ~(SpirvShaderTranslator::kSysFlag_VertexIndexLoad |
++      SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexLoad |
++      SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexLoad32Bit |
++      SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexReset);
++  if (dma) {
++    system_constants_.flags |= SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexLoad;
++    if (initiator.index_size == xenos::IndexFormat::kInt32)
++      system_constants_.flags |= SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexLoad32Bit;
++    if (primitives.host_primitive_reset_enabled)
++      system_constants_.flags |= SpirvShaderTranslator::kSysFlag_ComputeOrPrimitiveVertexIndexReset;
++  }
++  system_constants_.compute_memexport_vertex_count = primitives.guest_draw_vertex_count;
++  system_constants_.vertex_index_load_address = index_base;
++  system_constants_.line_loop_closing_index = UINT32_MAX;
++  system_constants_.vertex_index_reset = register_file_->Get<reg::VGT_MULTI_PRIM_IB_RESET_INDX>().reset_indx;
++  system_constants_.vertex_index_endian = register_file_->Get<reg::VGT_DMA_SIZE>().swap_mode;
++  if (initiator.index_size == xenos::IndexFormat::kInt16 &&
++      system_constants_.vertex_index_endian != xenos::Endian::kNone &&
++      system_constants_.vertex_index_endian != xenos::Endian::k8in16)
++    system_constants_.vertex_index_endian = system_constants_.vertex_index_endian == xenos::Endian::k8in32
++        ? xenos::Endian::k8in16 : xenos::Endian::kNone;
++  current_constant_buffers_up_to_date_ &= ~(1u << SpirvShaderTranslator::kConstantBufferSystem);
++  if (!UpdateBindings(shader, nullptr)) {
++    system_constants_ = saved_system;
++    current_constant_buffers_up_to_date_ &= ~(1u << SpirvShaderTranslator::kConstantBufferSystem);
++    return false;
++  }
++  EndRenderPass();
++  // Rasterization has read the original inputs. Commit those reads before the
++  // compute side effects, then make writes visible to subsequent draws/copies.
++  uint32_t start = UINT32_MAX, end = 0;
++  for (const auto& range : memexport_ranges_) {
++    start = std::min(start, range.base_address_dwords << 2);
++    end = std::max(end, (range.base_address_dwords << 2) + range.size_bytes);
++  }
++  shared_memory_->Use(VulkanSharedMemory::Usage::kGuestDrawReadWrite,
++      start < end ? std::make_pair(start, end - start) : std::make_pair(0u, SharedMemory::kBufferSize));
++  SubmitBarriers(true);
++  BindExternalComputePipeline(pipeline);
++  VkDescriptorSet sets[]{snapshot, current_graphics_descriptor_sets_[SpirvShaderTranslator::kDescriptorSetConstants]};
++  deferred_command_buffer_.CmdVkBindDescriptorSets(VK_PIPELINE_BIND_POINT_COMPUTE,
++      current_guest_graphics_pipeline_layout_->GetPipelineLayout(), 0, 2, sets, 0, nullptr);
++  const uint32_t count = primitives.guest_draw_vertex_count;
++  if (count) deferred_command_buffer_.CmdVkDispatch(std::min(count, 65535u), (count + 65534u) / 65535u, 1);
++  shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
++  SubmitBarriers(true);
++  system_constants_ = saved_system;
++  current_constant_buffers_up_to_date_ &= ~(1u << SpirvShaderTranslator::kConstantBufferSystem);
++  static uint32_t diagnostics = 0;
++  if (diagnostics++ < 32)
++    REXGPU_INFO("ASAHI memexport compute: shader={:016X}, vertices={}, DMA={}, snapshot={} bytes, after raster",
++                shader->ucode_data_hash(), count, dma, index_size);
++  return true;
++}
++
+ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t index_count,
+                                        IndexBufferInfo* index_buffer_info,
+                                        bool major_mode_explicit) {
+@@ -5108,8 +5236,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   }
+   pipeline_cache_->AnalyzeShaderUcode(*vertex_shader);
+   bool memexport_used_vertex = vertex_shader->memexport_eM_written() != 0;
++  const bool compute_memexport = memexport_used_vertex && !device_properties.vertexPipelineStoresAndAtomics &&
++                                REXCVAR_GET(vulkan_memexport_compute);
+   if (memexport_used_vertex) {
+-    if (!device_properties.vertexPipelineStoresAndAtomics) {
++    if (!device_properties.vertexPipelineStoresAndAtomics && !compute_memexport) {
+       REXGPU_ERROR(
+           "Vertex shader memexport draw encountered without "
+           "vertexPipelineStoresAndAtomics support");
+@@ -5148,6 +5278,33 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+     }
+   }
+   bool memexport_used_pixel = pixel_shader && (pixel_shader->memexport_eM_written() != 0);
++  if (compute_memexport && (memexport_used_pixel || !vertex_shader->texture_bindings().empty() ||
++      render_target_cache_->GetPath() != RenderTargetCache::Path::kHostRenderTargets)) {
++    REXGPU_ERROR("ASAHI compute memexport: pixel side effects, vertex textures or FSI not yet supported; rejecting before draw");
++    return false;
++  }
++  if (compute_memexport && memexport_ranges_.empty()) {
++    REXGPU_ERROR("ASAHI compute memexport: unresolved destination ranges; refusing unsynchronized CPU mirrors");
++    return false;
++  }
++  if (compute_memexport && regs.Get<reg::VGT_DRAW_INITIATOR>().source_select != xenos::SourceSelect::kDMA &&
++      regs.Get<reg::VGT_DRAW_INITIATOR>().source_select != xenos::SourceSelect::kAutoIndex) {
++    REXGPU_ERROR("ASAHI compute memexport: unsupported index source; rejecting before draw");
++    return false;
++  }
++  if (compute_memexport) {
++    for (auto& range : memexport_ranges_) {
++      const uint64_t base = uint64_t(range.base_address_dwords) << 2;
++      const uint64_t size = (uint64_t(range.size_bytes) + 3u) & ~uint64_t(3);
++      if (!size || base >= SharedMemory::kBufferSize || size > SharedMemory::kBufferSize - base) {
++        REXGPU_ERROR("ASAHI compute memexport: invalid stream extent base={:X} size={:X}", base, size);
++        return false;
++      }
++      // Atomic subword updates touch the containing dword. Cover its tail in
++      // residency, synchronization, invalidation and synchronous CPU readback.
++      range.size_bytes = uint32_t(size);
++    }
++  }
+   if (memexport_used_pixel) {
+     if (!device_properties.fragmentStoresAndAtomics) {
+       REXGPU_ERROR(
+@@ -5248,6 +5405,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+     // pipeline cache.
+     Shader::HostVertexShaderType host_vertex_shader_type =
+         primitive_processing_result.host_vertex_shader_type;
++    if (compute_memexport && host_vertex_shader_type != Shader::HostVertexShaderType::kVertex) {
++      REXGPU_ERROR("ASAHI compute memexport: tessellation/VS expansion type {} not yet supported; rejecting before draw",
++                   uint32_t(host_vertex_shader_type));
++      return false;
++    }
+     if (host_vertex_shader_type != Shader::HostVertexShaderType::kVertex &&
+         host_vertex_shader_type != Shader::HostVertexShaderType::kPointListAsTriangleStrip &&
+         host_vertex_shader_type != Shader::HostVertexShaderType::kRectangleListAsTriangleStrip &&
+@@ -5427,6 +5589,11 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   // textures.
+   VkPipeline pipeline;
+   void* pipeline_handle = nullptr;
++  if (compute_memexport && !is_rasterization_done) {
++    pipeline = VK_NULL_HANDLE;
++    pipeline_layout_provider = GetPipelineLayout(0, 0, 0, 0);
++    if (!pipeline_layout_provider) return draw_fail("compute_only_layout");
++  } else {
+   if (!pipeline_cache_->ConfigurePipeline(vertex_shader_translation, pixel_shader_translation,
+                                           primitive_processing_result, normalized_depth_control,
+                                           normalized_color_mask,
+@@ -5440,7 +5607,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   pipeline_cache_->GetPipelineAndLayoutByHandle(pipeline_handle, pipeline, pipeline_layout_provider,
+                                                 &pipeline_is_placeholder);
+   if (pipeline_is_placeholder && REXCVAR_GET(async_shader_compilation) &&
+-      REXCVAR_GET(sync_pipeline_creation)) {
++       (REXCVAR_GET(sync_pipeline_creation) || compute_memexport)) {
+     // A render that is made once (a car's picture) cannot lose this draw: wait for the
+     // creation thread to swap the real pipeline in (a stuck creation falls back to the skip).
+     const auto wait_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+@@ -5452,6 +5619,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+     }
+   }
+   if (REXCVAR_GET(async_shader_compilation) && pipeline_is_placeholder) {
++    if (compute_memexport) return draw_fail("compute_requires_real_raster_pipeline");
+     frame_used_async_placeholder_pipeline_ = true;
+     return true;
+   }
+@@ -5463,6 +5631,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+     current_guest_graphics_pipeline_ = pipeline;
+     current_external_graphics_pipeline_ = VK_NULL_HANDLE;
+   }
++  }
+ 
+   // Update the graphics pipeline, and if the new graphics pipeline has a
+   // different layout, invalidate incompatible descriptor sets before updating
+@@ -5685,7 +5854,30 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   }
+ 
+   ScratchBufferAcquisition guest_dma_index_scratch_buffer;
+-  if (primitive_processing_result.index_buffer_type ==
++  uint32_t compute_index_base = 0;
++  VkDeviceSize compute_index_bytes = 0;
++  if (compute_memexport && vgt_draw_initiator.source_select == xenos::SourceSelect::kDMA) {
++    const uint32_t width = vgt_draw_initiator.index_size == xenos::IndexFormat::kInt32 ? 4u : 2u;
++    compute_index_base = regs[XE_GPU_REG_VGT_DMA_BASE] & ~(width - 1);
++    const uint32_t aligned_base = compute_index_base & ~3u;
++    compute_index_bytes = rex::align(VkDeviceSize(compute_index_base - aligned_base) +
++                                    VkDeviceSize(primitive_processing_result.guest_draw_vertex_count) * width, VkDeviceSize(4));
++    if (!compute_index_bytes || uint64_t(aligned_base) + compute_index_bytes > SharedMemory::kBufferSize ||
++        !shared_memory_->RequestRange(aligned_base, uint32_t(compute_index_bytes))) return draw_fail("compute_index_range");
++    guest_dma_index_scratch_buffer = AcquireScratchGpuBuffer(compute_index_bytes,
++        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
++    if (!guest_dma_index_scratch_buffer.buffer()) return draw_fail("compute_index_snapshot");
++    shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
++    SubmitBarriers(true);
++    VkBufferCopy copy{aligned_base, 0, compute_index_bytes};
++    deferred_command_buffer_.CmdVkCopyBuffer(shared_memory_->buffer(), guest_dma_index_scratch_buffer.buffer(), 1, &copy);
++    PushBufferMemoryBarrier(guest_dma_index_scratch_buffer.buffer(), 0, compute_index_bytes,
++        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
++        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDEX_READ_BIT);
++    guest_dma_index_scratch_buffer.SetStageMask(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT);
++    guest_dma_index_scratch_buffer.SetAccessMask(VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INDEX_READ_BIT);
++  }
++  if (!compute_memexport && primitive_processing_result.index_buffer_type ==
+           PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA &&
+       !shader_32bit_index_dma && memexport_writes_possible) {
+     // Align with D3D12 behavior where memexporting draws using guest DMA indices
+@@ -5743,7 +5935,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   // After all commands that may dispatch, copy or insert barriers, submit
+   // the barriers (may end the render pass), and (re)enter the render pass
+   // before drawing.
+-  SubmitBarriersAndEnterRenderTargetCacheRenderPass(
++  if (compute_memexport && !is_rasterization_done) SubmitBarriers(true);
++  else SubmitBarriersAndEnterRenderTargetCacheRenderPass(
+       render_target_cache_->last_update_render_pass(),
+       render_target_cache_->last_update_framebuffer());
+ 
+@@ -5777,6 +5970,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   }
+ 
+   // Draw.
++  if (!compute_memexport || is_rasterization_done) {
+   if (primitive_processing_result.index_buffer_type ==
+           PrimitiveProcessor::ProcessedIndexBufferType::kNone ||
+       shader_32bit_index_dma) {
+@@ -5787,7 +5981,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+       case PrimitiveProcessor::ProcessedIndexBufferType::kGuestDMA:
+         if (guest_dma_index_scratch_buffer.buffer() != VK_NULL_HANDLE) {
+           index_buffer.first = guest_dma_index_scratch_buffer.buffer();
+-          index_buffer.second = 0;
++          index_buffer.second = compute_memexport ? (compute_index_base & 3u) : 0;
+         } else {
+           index_buffer.first = shared_memory_->buffer();
+           index_buffer.second = primitive_processing_result.guest_index_base;
+@@ -5814,6 +6008,10 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+     deferred_command_buffer_.CmdVkDrawIndexed(primitive_processing_result.host_draw_vertex_count, 1,
+                                               0, 0, 0);
+   }
++  }
++  if (compute_memexport && !IssueDrawMemexportCompute(vertex_shader, primitive_processing_result,
++          guest_dma_index_scratch_buffer.buffer(), compute_index_bytes, compute_index_base))
++    return draw_fail("compute_memexport_dispatch");
+ 
+   if (hdr_menu_background) {
+     // Include the decoded 1280x720 movie, but not the following logo, text or
+@@ -5838,16 +6036,16 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+   // Empty first: the setting check looks the legacy setting up by name (a lock, two
+   // strings and a hash lookup), which was 15% of the command processor in a race.
+   if (!memexport_ranges_.empty() &&
+-      IsReadbackMemexportEnabled(REXCVAR_GET(vulkan_readback_memexport))) {
++      (compute_memexport || IsReadbackMemexportEnabled(REXCVAR_GET(vulkan_readback_memexport)))) {
+     uint32_t memexport_total_size = 0;
+     for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
+       memexport_total_size += memexport_range.size_bytes;
+     }
+     if (memexport_total_size) {
+-      if (REXCVAR_GET(readback_memexport_fast)) {
++      if (!compute_memexport && REXCVAR_GET(readback_memexport_fast)) {
+         IssueDraw_MemexportReadbackFastPath(memexport_total_size);
+       } else {
+-        IssueDraw_MemexportReadbackFullPath(memexport_total_size);
++        if (!IssueDraw_MemexportReadbackFullPath(memexport_total_size)) return draw_fail("memexport_readback");
+       }
+     }
+   }
+@@ -5873,7 +6071,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
+           ui::vulkan::util::MemoryPurpose::kReadback, readback_buffer, readback_memory,
+           &readback_memory_type, &readback_memory_size)) {
+     REXGPU_ERROR("Failed to create a Vulkan memexport readback buffer");
+-    return true;
++    return false;
+   }
+ 
+   shared_memory_->Use(VulkanSharedMemory::Usage::kRead);
+@@ -5897,7 +6095,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
+     REXGPU_ERROR("Failed to await completion of Vulkan memexport readback");
+     dfn.vkDestroyBuffer(device, readback_buffer, nullptr);
+     dfn.vkFreeMemory(device, readback_memory, nullptr);
+-    return true;
++    return false;
+   }
+ 
+   void* readback_mapping = nullptr;
+@@ -5906,7 +6104,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
+     REXGPU_ERROR("Failed to map a Vulkan memexport readback buffer");
+     dfn.vkDestroyBuffer(device, readback_buffer, nullptr);
+     dfn.vkFreeMemory(device, readback_memory, nullptr);
+-    return true;
++    return false;
+   }
+ 
+   if (!(vulkan_device->memory_types().host_coherent & (uint32_t(1) << readback_memory_type))) {
+@@ -5917,7 +6115,13 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
+     readback_memory_range.size = std::min(
+         rex::round_up(VkDeviceSize(total_size), vulkan_device->properties().nonCoherentAtomSize),
+         readback_memory_size);
+-    dfn.vkInvalidateMappedMemoryRanges(device, 1, &readback_memory_range);
++    if (dfn.vkInvalidateMappedMemoryRanges(device, 1, &readback_memory_range) != VK_SUCCESS) {
++      REXGPU_ERROR("Failed to invalidate Vulkan memexport readback memory");
++      dfn.vkUnmapMemory(device, readback_memory);
++      dfn.vkDestroyBuffer(device, readback_buffer, nullptr);
++      dfn.vkFreeMemory(device, readback_memory, nullptr);
++      return false;
++    }
+   }
+ 
+   const uint8_t* readback_bytes = reinterpret_cast<const uint8_t*>(readback_mapping);

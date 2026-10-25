@@ -1,4 +1,4 @@
 # Patches must stay byte-exact (a Windows checkout with autocrlf would break git apply).
 patches/** -text
-*.patch -text
+*.patch -text whitespace=-blank-at-eol
 *.sh text eol=lf

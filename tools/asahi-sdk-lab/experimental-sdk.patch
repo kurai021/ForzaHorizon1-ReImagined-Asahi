@@ -1,0 +1,106 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1c21347..c785a26 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -297,6 +297,11 @@ message(STATUS "===========================================")
+ 
+ include(cmake/rexglue_export_targets.cmake)
+ 
++# Optional, isolated audit instrumentation. Never enabled in normal SDK builds.
++if(REX_ASAHI_LAB_SOURCE)
++    include("${REX_ASAHI_LAB_SOURCE}/lab.cmake")
++endif()
++
+ # SDK install/export rules (skipped when consumed as a subdirectory)
+ if(PROJECT_IS_TOP_LEVEL)
+     include(cmake/rexglue_devenv.cmake)
+diff --git a/src/graphics/pipeline/shader/spirv_translator.cpp b/src/graphics/pipeline/shader/spirv_translator.cpp
+index b77c103..29fb9db 100644
+--- a/src/graphics/pipeline/shader/spirv_translator.cpp
++++ b/src/graphics/pipeline/shader/spirv_translator.cpp
+@@ -1615,6 +1615,11 @@ void SpirvShaderTranslator::ProcessJumpInstruction(const ParsedJumpInstruction&
+ 
+ void SpirvShaderTranslator::ProcessAllocInstruction(const ParsedAllocInstruction& instr,
+                                                     uint8_t export_eM) {
++  // The ordinary VS half of a future compute fallback has no memexport variables.
++  // IssueDraw still rejects unsupported vertex memexport; this is not a fallback.
++  if (!IsMemoryExportSupported()) {
++    return;
++  }
+   bool start_memexport =
+       instr.type == ucode::AllocType::kMemory && current_shader().memexport_eM_written();
+   if (export_eM || start_memexport) {
+@@ -1902,6 +1907,28 @@ void SpirvShaderTranslator::StartVertexOrTessEvalShaderInMain() {
+     }
+   }
+ 
++  // Audit fix: constant-only compute memexports have no guest registers, but
++  // dispatch padding must still be rejected. The register initialization path
++  // below otherwise skips its compute invocation-count check entirely.
++  if (IsSpirvComputeShader() && !register_count()) {
++    spv::Id invocation = builder_->createLoad(input_vertex_index_, spv::NoPrecision);
++    spv::Id linear_index = builder_->createBinOp(
++        spv::OpIAdd, type_uint_, builder_->createCompositeExtract(invocation, type_uint_, 0),
++        builder_->createBinOp(
++            spv::OpIAdd, type_uint_,
++            builder_->createBinOp(spv::OpIMul, type_uint_,
++                builder_->createCompositeExtract(invocation, type_uint_, 1),
++                builder_->makeUintConstant(kMemExportComputeDispatchX)),
++            builder_->createBinOp(spv::OpIMul, type_uint_,
++                builder_->createCompositeExtract(invocation, type_uint_, 2),
++                builder_->makeUintConstant(kMemExportComputeDispatchX * kMemExportComputeDispatchY))));
++    id_vector_temp_.clear();
++    id_vector_temp_.push_back(builder_->makeIntConstant(kSystemConstantComputeMemExportVertexCount));
++    spv::Id count = builder_->createLoad(builder_->createAccessChain(
++        spv::StorageClassUniform, uniform_system_constants_, id_vector_temp_), spv::NoPrecision);
++    main_memexport_allowed_ = builder_->createBinOp(spv::OpULessThan, type_bool_, linear_index, count);
++  }
++
+   // Load the vertex index or the tessellation parameters.
+   if (register_count()) {
+     auto store_register_component = [this](uint32_t register_index, uint32_t component,
+diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
+index 6dbb9d8..c672dfb 100644
+--- a/src/graphics/vulkan/command_processor.cpp
++++ b/src/graphics/vulkan/command_processor.cpp
+@@ -1578,10 +1578,11 @@ bool VulkanCommandProcessor::SetupContext() {
+     return false;
+   }
+   if (!device_properties.vertexPipelineStoresAndAtomics) {
+-    REXGPU_ERROR(
+-        "Vulkan vertexPipelineStoresAndAtomics is required for GPU emulation and "
+-        "D3D12 parity, but unsupported by the selected device");
+-    return false;
++    if (REXCVAR_GET(vulkan_require_vertex_pipeline_stores_and_atomics)) {
++      REXGPU_ERROR("Vulkan vertexPipelineStoresAndAtomics required by startup policy");
++      return false;
++    }
++    REXGPU_WARN("ASAHI AUDIT: vertex stores unavailable; vertex memexport draws remain rejected");
+   }
+   if (!device_properties.geometryShader) {
+     if (REXCVAR_GET(vulkan_require_geometry_shader)) {
+diff --git a/src/ui/vulkan/vulkan_device.cpp b/src/ui/vulkan/vulkan_device.cpp
+index 37ee195..eee098f 100644
+--- a/src/ui/vulkan/vulkan_device.cpp
++++ b/src/ui/vulkan/vulkan_device.cpp
+@@ -27,8 +27,8 @@ REXCVAR_DEFINE_BOOL(vulkan_require_fragment_stores_and_atomics, true, "UI/Vulkan
+                     "required for Vulkan GPU emulation")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ REXCVAR_DEFINE_BOOL(vulkan_require_vertex_pipeline_stores_and_atomics, true, "UI/Vulkan",
+-                    "Deprecated and ignored for parity; vertexPipelineStoresAndAtomics is always "
+-                    "required for Vulkan GPU emulation")
++                    "Experimental audit: require vertexPipelineStoresAndAtomics at startup; "
++                    "disabling still rejects vertex memexport draws")
+     .lifecycle(rex::cvar::Lifecycle::kInitOnly);
+ // Apple Silicon / MoltenVK does not expose geometryShader or fillModeNonSolid;
+ // default both to false on macOS so the device can still be selected.
+@@ -116,7 +116,8 @@ std::unique_ptr<VulkanDevice> VulkanDevice::CreateIfSupported(
+           properties.deviceName);
+       return nullptr;
+     }
+-    if (!supported_features.vertexPipelineStoresAndAtomics) {
++    if (REXCVAR_GET(vulkan_require_vertex_pipeline_stores_and_atomics) &&
++        !supported_features.vertexPipelineStoresAndAtomics) {
+       REXLOG_WARN(
+           "Vulkan device '{}' doesn't support vertexPipelineStoresAndAtomics, which "
+           "is required for Vulkan GPU emulation parity",

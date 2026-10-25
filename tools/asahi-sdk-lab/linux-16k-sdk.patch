@@ -1,0 +1,69 @@
+diff --git a/include/rex/system/xmemory.h b/include/rex/system/xmemory.h
+index 0c39a42..78850bb 100644
+--- a/include/rex/system/xmemory.h
++++ b/include/rex/system/xmemory.h
+@@ -37,10 +37,14 @@ namespace rex::memory::detail {
+ ///   - Windows:        64KB granularity  -> offset
+ ///   - macOS arm64:    16KB granularity  -> offset
+ ///   - macOS x86_64:    4KB granularity  -> no offset
+-///   - Linux (any):     4KB granularity  -> no offset (mmap handles it natively)
+-constexpr u32 PhysicalHostOffset([[maybe_unused]] u32 guest_addr) noexcept {
++///   - Linux:          runtime page size -> offset only above 4KB
++inline u32 PhysicalHostOffset([[maybe_unused]] u32 guest_addr) noexcept {
+ #if REX_PLATFORM_WIN32 || (REX_PLATFORM_MAC && defined(__aarch64__))
+   return (guest_addr >= 0xE0000000u) ? 0x1000u : 0u;
++#elif REX_PLATFORM_LINUX
++  if (guest_addr < 0xE0000000u) return 0u;
++  static const u32 offset = allocation_granularity() > 0x1000 ? 0x1000u : 0u;
++  return offset;
+ #else
+   return 0u;
+ #endif
+diff --git a/resources/templates/codegen/pch_h.inja b/resources/templates/codegen/pch_h.inja
+index 0ea15ef..7cf4ab6 100644
+--- a/resources/templates/codegen/pch_h.inja
++++ b/resources/templates/codegen/pch_h.inja
+@@ -36,6 +36,7 @@
+ #include <rex/perf/counter.h>
+ #include <rex/thread/mutex.h>
+ #include <rex/system/mmio_handler.h>
++#include <rex/system/xmemory.h>
+ 
+ #include <atomic>
+ #include <cassert>
+@@ -124,11 +125,7 @@ extern PPCFuncMapping PPCFuncMappings[];
+ // Memory Access
+ //=============================================================================
+ 
+-#if REX_PLATFORM_WIN32 || (REX_PLATFORM_MAC && REX_ARCH_ARM64)
+-#define REX_PHYS_HOST_OFFSET(addr) (((u32)(addr) >= 0xE0000000u) ? 0x1000u : 0u)
+-#else
+-#define REX_PHYS_HOST_OFFSET(addr) 0u
+-#endif
++#define REX_PHYS_HOST_OFFSET(addr) rex::memory::detail::PhysicalHostOffset((u32)(addr))
+ 
+ #define REX_RAW_ADDR(x) (base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))
+ 
+diff --git a/resources/templates/test/ppc_config_h.inja b/resources/templates/test/ppc_config_h.inja
+index d0df746..15cd913 100644
+--- a/resources/templates/test/ppc_config_h.inja
++++ b/resources/templates/test/ppc_config_h.inja
+@@ -73,11 +73,8 @@
+ #endif
+ #endif
+ 
+-#if REX_PLATFORM_WIN32 || (REX_PLATFORM_MAC && REX_ARCH_ARM64)
+-#define REX_PHYS_HOST_OFFSET(addr) (((u32)(addr) >= 0xE0000000u) ? 0x1000u : 0u)
+-#else
+-#define REX_PHYS_HOST_OFFSET(addr) 0u
+-#endif
++#include <rex/system/xmemory.h>
++#define REX_PHYS_HOST_OFFSET(addr) rex::memory::detail::PhysicalHostOffset((u32)(addr))
+ 
+ #define REX_RAW_ADDR(x) (base + (u32)(x) + REX_PHYS_HOST_OFFSET(x))
+ 
+@@ -192,4 +189,3 @@ inline std::atomic<i32>& ppc_global_lock_count_() {
+     assert(old_count_ >= 1 && "LeaveGlobalLock called without matching EnterGlobalLock"); \
+     rex::thread::global_critical_region::mutex().unlock();                                \
+   } while (0)
+-

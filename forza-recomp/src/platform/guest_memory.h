@@ -1,8 +1,9 @@
 // forza - host pointers for guest addresses, as the recompiled code computes them.
 //
-// Guest memory is `base + address`, except that on Windows the physical heap at
-// 0xE0000000 and up sits 0x1000 bytes further on (the 64 KB mapping granularity
-// rounds that view's 4 KB offset away; the generated code adds it back with
+// Guest memory is `base + address`, except that with host mapping granularity
+// above 4 KB (including Asahi's 16 KB pages), the physical heap at 0xE0000000
+// and up sits 0x1000 bytes further on (the mapping granularity rounds that
+// view's 4 KB offset away; the generated code adds it back with
 // REX_PHYS_HOST_OFFSET and the runtime with rex::memory::GuestPtr). Code here uses
 // GuestPtr(base, address) for every guest pointer: a raw `base + address` reads other
 // memory than the game and the runtime there. The runtime allocates its own guest
