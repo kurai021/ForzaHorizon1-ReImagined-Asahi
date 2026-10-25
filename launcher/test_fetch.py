@@ -106,6 +106,7 @@ class UrlopenTests(unittest.TestCase):
         self.assertEqual(op.call_count, 1)
         http.close()
 
+    @patch.object(updater, "UPDATES_ENABLED", True)
     def test_update_check_reports_the_certificate_problem(self):
         with patch.object(fetch.urllib.request, "urlopen", side_effect=cert_error()), \
                 patch("forza_launcher.paths.log_error"):

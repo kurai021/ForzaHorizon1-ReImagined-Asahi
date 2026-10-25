@@ -1,0 +1,24 @@
+name: Asahi source preservation audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: SDK preservation and updater policy tests (no game or network)
+        run: |
+          python3 -B -m unittest discover -s tools/asahi-sdk-lab -p 'test_*.py' -v
+          python3 -B -m unittest launcher/test_asahi_update_policy.py launcher/test_updater.py launcher/test_fetch.py -v
+      - name: Audit the source publication delta
+        run: python3 -B tools/asahi-sdk-lab/audit_publication.py

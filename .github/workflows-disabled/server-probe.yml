@@ -1,3 +1,4 @@
+# Archived during the Asahi fork audit; outside GitHub's executable workflow directory.
 # Checks the public Forza Live server from outside the home network: TCP status page and a
 # UDP HELLO -> WELCOME (tools/server_probe.py). Run by hand, and every 6 hours.
 name: server-probe

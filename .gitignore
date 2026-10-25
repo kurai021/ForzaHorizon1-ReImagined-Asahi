@@ -34,3 +34,12 @@ flatpak-build-dir/
 flatpak-repo/
 *.flatpak
 HorizonISO/
+# Private preservation/export artifacts, never source publications.
+*.bundle
+*.rpm
+*.core
+core.[0-9]*
+*.tar
+*.tar.gz
+*.tar.xz
+/asahi-private/

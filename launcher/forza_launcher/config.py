@@ -24,7 +24,7 @@ def _default():
         "save_manager": {"automatic": True, "keep_automatic": 10},
         # Mods (#149, mods.py): folder names in load order, and those turned off.
         "mods": {"order": [], "disabled": []},
-        "check_updates": True,    # one background check per packaged launcher session
+        "check_updates": False,   # source-only Asahi fork; packaged updates await audit
         "game_package": "",       # the Games on Demand package (file)
         "tu_package": "",         # the player's title update package (TU4)
         "dlc_dir": "",            # folder of DLC packages (4D5309C9/00000002)

@@ -8,7 +8,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPushButton, QStackedWidget, QVBoxLayout, QWidget)
 
-from .. import APP_NAME, __version__, builder, cleanenv, coop_grant, crash_report, game, paths, dlss, shader_share
+from .. import APP_NAME, __version__, builder, cleanenv, coop_grant, crash_report, game, paths, dlss, shader_share, updater
 from ..config import Config, import_toml, render_toml
 from . import theme
 from .pages import AboutPage, PlayPage, SetupPage
@@ -171,7 +171,7 @@ class MainWindow(QMainWindow):
         if sys.platform == "win32":
             QTimer.singleShot(600, self.setup.offer_move)
         update_result = self.show_update_result()
-        if not paths.in_checkout() and cfg.d["check_updates"] and not update_result:
+        if updater.UPDATES_ENABLED and not paths.in_checkout() and cfg.d["check_updates"] and not update_result:
             QTimer.singleShot(1500, self.about.updates.check)
 
     def show_update_result(self):

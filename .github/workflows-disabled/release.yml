@@ -1,3 +1,4 @@
+# Archived during the Asahi fork audit; outside GitHub's executable workflow directory.
 # Builds the launcher installers and attaches them to the release.
 #
 # The installers and the Flatpak bundle hold the launcher, the project's own sources, the Forza Live server and the

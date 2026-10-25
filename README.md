@@ -1,3 +1,24 @@
+# Forza Horizon 1: ReImagined — Fedora Asahi ARM64
+
+Independent source-build fork maintained at
+[kurai021/ForzaHorizon1-ReImagined-Asahi](https://github.com/kurai021/ForzaHorizon1-ReImagined-Asahi),
+based on [Dyotson's project](https://github.com/Dyotson/ForzaHorizon1-ReImagined).
+Upstream history, licenses and attributions are preserved. `main` follows upstream;
+the port lives on `asahi`.
+
+- **[Asahi build and verification guide](docs/asahi.md)**
+- **[Preservation inventory, reproduction results and publication status](docs/asahi-preservation.md)**
+- Experimental on Fedora Asahi Remix / Apple M2 Pro, Honeykrisp and 16 KiB pages.
+  Initial 3D rendering and accelerator input have been observed; sustained 720p/30
+  and complete races remain unverified. This preservation phase makes no FPS optimizations.
+- The current distribution is **source and patches**. Generate and build the game
+  locally from your own files. The inherited launcher/package instructions below
+  describe upstream's Windows/x86-64 releases, not an Asahi installer.
+- Release/Pages/announcement automation is quarantined on `asahi`, and launcher
+  update checks/downloads are disabled pending a separate release audit.
+
+## Upstream project description
+
 <p align="center">
   <img src="docs/images/logo.svg" alt="Forza Horizon 1: ReImagined logo" width="160">
 </p>

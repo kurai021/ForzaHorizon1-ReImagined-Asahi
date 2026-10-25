@@ -10,7 +10,9 @@ from pathlib import Path
 
 from . import GITHUB_URL, __version__, fetch
 
-API_URL = "https://api.github.com/repos/Dyotson/ForzaHorizon1-ReImagined/releases/latest"
+API_URL = GITHUB_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/releases/latest"
+UPDATES_ENABLED = False
+DISABLED_MESSAGE = "Launcher updates are disabled in the source-only Asahi fork pending release audit."
 TIMEOUT = 15
 
 
@@ -83,6 +85,8 @@ def parse_release(data):
 
 
 def check():
+    if not UPDATES_ENABLED:
+        raise UpdateError(DISABLED_MESSAGE)
     request = urllib.request.Request(API_URL, headers={
         "User-Agent": "forza-reimagined-launcher/" + __version__,
         "Accept": "application/vnd.github+json",
@@ -107,6 +111,8 @@ def check():
 
 def download(asset: Asset, directory: Path, progress=lambda d, t: None, cancelled=lambda: False):
     """Use a partial file, check size and SHA-256, then atomically expose the completed file."""
+    if not UPDATES_ENABLED:
+        raise UpdateError(DISABLED_MESSAGE)
     directory.mkdir(parents=True, exist_ok=True)
     dest = directory / asset.name
     if cancelled():

@@ -1,3 +1,4 @@
+# Archived during the Asahi fork audit; outside GitHub's executable workflow directory.
 # Posts a published release to the Discord announcements channel through a webhook.
 # Set the secret DISCORD_WEBHOOK_URL in the "announcements" environment (Discord: channel settings > Integrations >
 # Webhooks > New Webhook > Copy Webhook URL). Without it the job does nothing.

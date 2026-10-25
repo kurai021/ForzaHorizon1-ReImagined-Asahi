@@ -25,6 +25,9 @@ class UpdateUITests(unittest.TestCase):
         from forza_launcher.config import Config
         from forza_launcher.ui.window import MainWindow
         from forza_launcher import updater, GITHUB_URL
+        enabled = patch.object(updater, "UPDATES_ENABLED", True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.config_path_patch = patch("forza_launcher.paths.config_dir", return_value=Path(self.temp.name))
         self.config_path_patch.start()

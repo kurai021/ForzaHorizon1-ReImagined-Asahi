@@ -102,6 +102,10 @@ class UpdateCard(QWidget):
             row.addWidget(button)
         row.addStretch()
         lay.addLayout(row)
+        if not updater.UPDATES_ENABLED:
+            self.message.setText(updater.DISABLED_MESSAGE)
+            self.automatic.setEnabled(False)
+            self.check_button.setEnabled(False)
 
     def _save_preference(self, checked):
         self.cfg.d["check_updates"] = checked

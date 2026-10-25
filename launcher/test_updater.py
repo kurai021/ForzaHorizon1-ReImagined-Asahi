@@ -23,6 +23,11 @@ def release_data():
 
 
 class UpdateTests(unittest.TestCase):
+    def setUp(self):
+        enabled = patch.object(updater, "UPDATES_ENABLED", True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
+
     def test_versions_do_not_downgrade_or_compare_development_builds(self):
         r = updater.parse_release(release_data())
         for current in ("0.1.7", "v0.1.7", "0.1.7+build.3"):
