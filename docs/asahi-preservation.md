@@ -5,22 +5,45 @@ Date: 2026-10-25. Destination:
 No remote push, release, tag publication or repository-setting change has been
 authorized in this phase.
 
+## Current workspace
+
+Development is consolidated in this repository. The active build is
+`forza-recomp/out/asahi-sdk-lab/game-base/`; its original SDK, installation,
+generated game code and extraction were retained in place.
+
+The two temporary sibling directories, `ForzaHorizon1-Asahi-clean-validation`
+and `ForzaHorizon1-Asahi-preservation-20261025`, were retired at the owner's
+request. Useful evidence was first copied and checked inside this checkout:
+
+- Reconstructed-build run records are now in `forza-recomp/out/asahi-sdk-lab/logs/`.
+- Source archives, Git bundles and patch exports are in
+  `forza-recomp/out/asahi-preservation/exports/`.
+- Historical manifests and reconstruction reports are in
+  `forza-recomp/out/asahi-preservation/history/`.
+- `consolidation.json` records the 166 retained files and their checksums
+  (70,038,714 bytes). These paths are ignored by Git.
+
+The duplicate workspaces, SDK trees, caches and game builds were not copied back
+over the functional build. Historical absolute paths in archived records describe
+past commands; the maintained tools derive paths from this repository's root.
+
 ## Preserved baseline
 
 - Project base: `43b64aeb63fb8553a906fca764e06614b8a6fe43`.
 - SDK: `bd833a2ab69d305f99ddf57418fc38ffec8af93d`.
-- Full pre-edit copy: 38,487 entries, 17,823,477,199 regular-file bytes, zero
-  SHA-256/mode/symlink differences. The private parent directory has mode 0700.
+- The initial pre-edit copy was verified: 38,487 entries, 17,823,477,199
+  regular-file bytes, zero SHA-256/mode/symlink differences.
 - Git inventory: project, SDK and 23 recursive submodules (25 worktrees), with
   HEADs, refs, local configuration, staged/unstaged diffs and untracked-file status.
 - A verified Git bundle preserves all 53 original refs and complete project history.
-- The copy includes uncommitted/new port sources, the entire functional laboratory,
+- That historical copy included uncommitted/new port sources, the entire functional laboratory,
   built game/modules/libraries, generated code, profiles, caches and raw logs.
-  Those private materials are retained locally, not copied into source publication.
+  The functional originals remain in this checkout, excluded from source publication.
 
-The backup is a separate local Btrfs reflink copy; it protects against subsequent
-file edits but is not an off-machine disaster-recovery copy. Its private manifests
-and configuration inventory are intentionally outside this Git repository.
+The full sibling Btrfs copies were used for the preservation/reconstruction audit
+and have now been retired. Their retained manifests and configuration inventory
+are under ignored `forza-recomp/out/asahi-preservation/history/`; they are historical
+evidence, not a claim that a separate full workspace backup still exists.
 
 A final preservation check rehashed **31,762 original laboratory, generated-code
 and extracted-data files** against the pre-edit manifest, excluding Git internal
@@ -122,19 +145,13 @@ verification report commit:
 | `df1573e` | SDK version ancestry preservation and its regression |
 | `3af8057` | Source publication audit, fork documentation, workflow quarantine and updater policy |
 
-Private source-archive/bundle exports and the final reconstructed laboratory are
-retained alongside the local backup. Neither these private backups nor commercial
-inputs are Git publication artifacts. No remote push, release or tag creation
+Private source-archive/bundle exports and the useful reconstruction records are
+retained in this checkout's ignored output directories. Neither these local
+archives nor commercial inputs are Git publication artifacts. No remote push, release or tag creation
 was performed; `asahi-experimental-1` remains the proposed next reference.
 
-Raw evidence and captures remain private under the clean clone's ignored `out/`.
+Raw evidence and captures are consolidated in this checkout's ignored `out/`.
 These are reproduction checks, not additional performance benchmarks.
-
-### Filesystem event during the smoke test
-
-The game exited normally and produced its scene. This limited smoke
-test does not establish broad gameplay or long-session stability;
-further GPU tests require separate authorization.
 
 ## Publication boundary
 
@@ -152,14 +169,13 @@ further GPU tests require separate authorization.
 - `main` remains upstream-compatible. Remote branch defaults, Actions settings,
   Pages configuration and publishing permissions have not been modified.
 
-## Pending before any remote publication
+## Remaining fork work
 
 1. Owner review of the final local commits, source inventory and archive audit.
-2. Authorize any further GPU smoke tests separately.
-3. Validate launcher UI behavior with PySide6: the core policy tests pass locally,
+2. Validate launcher UI behavior with PySide6 when launcher work is resumed: the core policy tests pass locally,
    but this environment does not currently provide PySide6 for Qt integration tests.
-4. Obtain explicit authorization for a push and for any remote default-branch or
+3. Obtain explicit authorization for a push and for any remote default-branch or
    Actions/Pages setting change. The proposed reference is `asahi-experimental-1`;
    no release publication is part of this local phase.
-5. Plan FPS improvements and full-race/long-run testing separately; the existing
+4. Plan FPS improvements and full-race/long-run testing separately; the existing
    approximate 21 FPS result does not meet sustained 720p/30.

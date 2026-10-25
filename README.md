@@ -7,6 +7,8 @@ Upstream history, licenses and attributions are preserved. `main` follows upstre
 the port lives on `asahi`.
 
 - **[Asahi build and verification guide](docs/asahi.md)**
+- **[Daily development in this workspace](tools/asahi-sdk-lab/README.md)** — SDK,
+  build, local game files and logs are maintained inside this checkout.
 - **[Preservation inventory, reproduction results and publication status](docs/asahi-preservation.md)**
 - Experimental on Fedora Asahi Remix / Apple M2 Pro, Honeykrisp and 16 KiB pages.
   Initial 3D rendering and accelerator input have been observed; sustained 720p/30

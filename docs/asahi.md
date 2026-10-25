@@ -31,6 +31,36 @@ build products go under ignored `forza-recomp/out/asahi-sdk-lab/`. They do not
 require the original developer's checkout, a prebuilt nightly overlay or temporary
 session scripts.
 
+## One development workspace
+
+The current checkout is the development and build workspace. No sibling validation
+clone or preservation directory is needed for everyday work:
+
+```text
+tools/asahi-sdk-lab/                  versioned build tools, patches and locks
+forza-recomp/generated/              local generated game code (ignored)
+extracted/                          local game files (ignored)
+forza-recomp/out/asahi-sdk-lab/
+  sdk/                              patched SDK source
+  install/                          local SDK installation
+  game-base/                        active game executable, modules and libraries
+  host-base/                        host compile checks
+  local-tools/                      local validation tools
+  profile-*/                        local profiles
+  logs/                             original and reconstructed-build run records
+forza-recomp/out/asahi-preservation/
+  exports/                          local Git bundles, source archive and patch exports
+  history/                          historical manifests and reconstruction evidence
+  consolidation.json                inventory of evidence retained during consolidation
+```
+
+The full temporary sibling copies were retired after their useful records were
+consolidated here. The original working SDK, installed libraries, game executable,
+generated code and game data remain the active build. Historical reports retain
+the command paths used at the time; those paths are not development dependencies.
+The archived reconstruction's artifact report describes that former build, not
+the active executable. See the [daily command reference](../tools/asahi-sdk-lab/README.md).
+
 ## Prerequisites
 
 Use native Linux ARM64, a C++23-capable Clang toolchain and the normal Fedora
@@ -55,9 +85,9 @@ After the `asahi` branch is authorized and published:
 git clone --branch asahi https://github.com/kurai021/ForzaHorizon1-ReImagined-Asahi.git
 ```
 
-During the local audit, a separate clone can instead be created from your local
-repository using `git clone --no-hardlinks --branch asahi SOURCE DESTINATION`.
-Run the following commands from the new clone's root.
+For the existing local setup, use this checkout directly. Run the following
+commands from the project root; a separate audit clone is not part of the normal
+development workflow.
 
 ## 2. Prepare and build the SDK
 
@@ -74,8 +104,8 @@ patch. Commit ancestry and version tags are retained: the expected SDK version
 description is `v0.10.0-24-gbd833a2`, not a shallow-clone `dev.unknown` fallback.
 
 An existing SDK directory is **verified, not reset or overwritten**. An unexpected
-file or modification causes preparation to fail. Use a separate new destination
-to recover a failed preparation while preserving the old directory for inspection.
+file or modification causes preparation to fail. Additional scratch SDK sources,
+when needed, can be kept under ignored `forza-recomp/out/` using `sdk.py --sdk`.
 
 ```sh
 python3 -B tools/asahi-sdk-lab/sdk.py verify
