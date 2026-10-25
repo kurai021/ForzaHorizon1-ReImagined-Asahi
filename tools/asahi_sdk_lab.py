@@ -15,6 +15,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "forza-recomp/out/asahi-sdk-lab"
 ICD = Path("/usr/share/vulkan/icd.d/asahi_icd.aarch64.json")
+sys.path.insert(0, str(ROOT / "tools/asahi-sdk-lab"))
+from resource_guard import OwnedProcesses, memory_snapshot, memory_problem, require_memory
 
 
 def apple_device():
@@ -95,11 +97,15 @@ def main():
         env["VK_LAYER_PATH"] = str(local / "share/vulkan/explicit_layer.d")
         env["LD_LIBRARY_PATH"] = str(local / "lib64") + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
     identity = None
+    initial_memory = memory_snapshot()
+    if memory_problem(initial_memory, initial_memory):
+        raise RuntimeError("Memory reserve or pressure disallows a new test")
     if args.gpu:
         if (LAB / "STOP-GPU.json").exists():
             raise RuntimeError("GPU experiments stopped by earlier kernel error; inspect STOP-GPU.json")
         if not ICD.is_file():
             raise RuntimeError(f"Missing Asahi ICD: {ICD}")
+        initial_memory = require_memory()
         for key in ("VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES", "VK_LOADER_DRIVERS_SELECT",
                     "VK_LOADER_DRIVERS_DISABLE", "MESA_VK_DEVICE_SELECT", "DRI_PRIME"):
             env.pop(key, None)
@@ -127,29 +133,57 @@ def main():
     guest_log_offset = guest_log.stat().st_size if guest_log and guest_log.is_file() else 0
     print("Log:", directory, flush=True)
     started = time.monotonic()
+    resource_samples = []
+    resource_abort = None
+    runner_error = None
+    code = 125
+    cleanup = None
     with (directory / "stdout.log").open("w") as log:
         process = subprocess.Popen(command, cwd=args.cwd, env=env, stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
+        owned = OwnedProcesses(process)
         try:
-            if args.stack_after:
-                try:
-                    code = process.wait(timeout=args.stack_after)
-                except subprocess.TimeoutExpired:
+            stack_done = False
+            while process.poll() is None:
+                owned.capture()
+                elapsed = time.monotonic() - started
+                sample = memory_snapshot()
+                resource_samples.append(sample)
+                resource_abort = memory_problem(sample, initial_memory)
+                if resource_abort:
+                    owned.stop()
+                    break
+                if elapsed >= args.seconds:
+                    raise subprocess.TimeoutExpired(command, args.seconds)
+                if args.stack_after and not stack_done and elapsed >= args.stack_after:
                     stacks = subprocess.run(["eu-stack", "-p", str(process.pid)],
                         capture_output=True, text=True, timeout=10)
                     (directory / "cpu-stacks.log").write_text(stacks.stdout + stacks.stderr)
-                    code = process.wait(timeout=max(1, args.seconds - (time.monotonic() - started)))
-            else:
-                code = process.wait(timeout=args.seconds)
+                    stack_done = True
+                time.sleep(.5)
+            code = 125 if resource_abort else process.wait(timeout=5)
         except (subprocess.TimeoutExpired, KeyboardInterrupt):
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            owned.stop()
             code = 124
+        except Exception as error:
+            runner_error = repr(error)
+            owned.stop()
+            code = 125
+        finally:
+            cleanup = owned.finish()
+            process.poll()
     metadata.update(returncode=code, elapsedSeconds=time.monotonic() - started)
+    if cleanup["remainingPids"]:
+        code = 125
+        metadata["returncode"] = code
+    metadata["processCleanup"] = cleanup
+    metadata["runnerError"] = runner_error
+    metadata["memoryBefore"] = initial_memory
+    metadata["memoryAfter"] = memory_snapshot()
+    metadata["resourceAbort"] = resource_abort
+    metadata["minimumAvailableMiB"] = min(s["availableMiB"] for s in
+                                         [initial_memory, *resource_samples, metadata["memoryAfter"]])
+    (directory / "resources.json").write_text(json.dumps(resource_samples, indent=2) + "\n")
     output = (directory / "stdout.log").read_text(errors="replace")
     if guest_log and guest_log.is_file():
         with guest_log.open("rb") as log:
@@ -172,7 +206,7 @@ def main():
         bad = re.search(r"(?im)^.*(?:\basahi\b|apple-dcp|\bdrm\b|\bgpu\b).*(?:fault|hang|timeout|timed out|error|crash)", kernel.stdout)
         metadata["kernelReadable"] = kernel.returncode == errors.returncode == 0
         metadata["kernelError"] = bool(bad) or (errors.returncode == 0 and errors.stdout.strip() not in ("", "-- No entries --"))
-        if metadata["kernelError"] or not metadata["kernelReadable"] or code in (124, -signal.SIGSEGV, -signal.SIGABRT):
+        if metadata["kernelError"] or not metadata["kernelReadable"] or resource_abort or runner_error or cleanup["remainingPids"] or code in (124, -signal.SIGSEGV, -signal.SIGABRT):
             (LAB / "STOP-GPU.json").write_text(json.dumps(metadata, indent=2))
             print("STOP: GPU tests suspended; inspect diagnostics", flush=True)
     (directory / "result.json").write_text(json.dumps(metadata, indent=2))

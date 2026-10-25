@@ -4,6 +4,8 @@ This is an independent experimental port of ReImagined, not an upstream Asahi
 release. Work is on `asahi`; `main` remains at the upstream baseline for later
 synchronization. The proposed first reference is `asahi-experimental-1`, pending
 publication authorization. See [the preservation audit](asahi-preservation.md).
+For the initial MSAA study and owner-driven Off/2x results, see the
+[Stage 1 performance checkpoint](asahi-performance-phase1.md).
 
 ## Validated scope
 
@@ -71,11 +73,20 @@ are needed. `dnf download`, `rpm2cpio` and `cpio` prepare local validation tools
 records which system dependencies it found. Package installation is a separate
 administrator action; these scripts do not install global graphics components.
 
-Keep sufficient free RAM for a three-job build. The game probe's 400 MiB emergency
-floor is a monitored low-memory exception, not a substitute for the original
-10 GiB free-memory recommendation. The helper ends a run at at most 180 seconds
-with SIGINT, followed by a supervisor limit. Inspect any `STOP-GPU.json` and its
-kernel log before a subsequent GPU run. A stopped directory remains stopped.
+Keep sufficient free RAM for a three-job build. GPU tests require at least 6 GiB
+of available physical memory before launch and reserve at least 3 GiB during the
+session. The monitor records RAM, swap and memory-pressure counters before,
+during and after each supervised command. Growing swap by more than 512 MiB or
+sustained reclaim/stall pressure also aborts the test. These are conservative
+process safeguards, not a guarantee against a driver/firmware freeze.
+
+The helper ends a run at at most 180 seconds with SIGINT, followed by a supervisor
+limit. Each test owns an isolated process session; cleanup checks its descendants
+by PID/start time and boot identity, including orphans, and escalates only those
+test processes if needed. Leftovers are recorded and block further GPU work.
+Inspect any `STOP-GPU.json` and its kernel log before a subsequent GPU run. A
+stopped directory remains stopped; clearing a resource condition does not clear
+a GPU fault marker.
 
 ## 1. Obtain the source
 
