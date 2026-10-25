@@ -42,7 +42,9 @@ def record_lock(sdk):
             raise RuntimeError(f"Unexpected submodule revision: {line}")
         submodules.append({"path": path, "commit": commit})
     record = {"schema": 1, "projectBaseCommit": PROJECT_BASE, "sdkRepository": SDK_URL,
-              "sdkCommit": SDK_COMMIT, "inheritedPatches": patch_records(inherited),
+              "sdkCommit": SDK_COMMIT,
+              "versionDescribe": git(sdk, "describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*", "--exclude", "*-*"),
+              "inheritedPatches": patch_records(inherited),
               "asahiPatches": patch_records([HERE / name for name in (
                   "experimental-sdk.patch", "memexport-compute-sdk.patch", "linux-16k-sdk.patch")]),
               "sdlPatches": patch_records(sorted((ROOT / "patches/rexglue-sdk/sdl3").glob("*.patch"))),
@@ -89,6 +91,10 @@ def verify(sdk, lock):
     report = {"sdk": verify_tree(sdk, lock["sdkCommit"],
                                   lock["inheritedPatches"] + lock["asahiPatches"]),
               "submodules": {}}
+    description = git(sdk, "describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*", "--exclude", "*-*")
+    if description != lock["versionDescribe"]:
+        raise RuntimeError("SDK version history differs from the lock; retain the pinned commit ancestry and tags")
+    report["sdk"]["versionDescribe"] = description
     actual_paths = {line.split()[1] for line in git(sdk, "submodule", "status", "--recursive").splitlines()}
     if actual_paths != {record["path"] for record in lock["submodules"]}:
         raise RuntimeError("Submodule set differs from the preservation lock")
@@ -107,7 +113,7 @@ def prepare(sdk, lock):
     sdk.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", "--filter=blob:none", "--no-checkout",
                     lock["sdkRepository"], str(sdk)], check=True)
-    git(sdk, "fetch", "--depth=1", "origin", lock["sdkCommit"])
+    git(sdk, "fetch", "origin", lock["sdkCommit"])
     git(sdk, "checkout", "--detach", lock["sdkCommit"])
     git(sdk, "submodule", "update", "--init", "--recursive", "--depth=1")
     for patch in lock["inheritedPatches"] + lock["asahiPatches"]:

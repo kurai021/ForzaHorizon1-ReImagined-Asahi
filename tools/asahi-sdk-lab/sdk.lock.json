@@ -3,6 +3,7 @@
   "projectBaseCommit": "43b64aeb63fb8553a906fca764e06614b8a6fe43",
   "sdkRepository": "https://github.com/rexglue/rexglue-sdk.git",
   "sdkCommit": "bd833a2ab69d305f99ddf57418fc38ffec8af93d",
+  "versionDescribe": "v0.10.0-24-gbd833a2",
   "inheritedPatches": [
     {
       "path": "patches/rexglue-sdk/0001-spirv-tfetch-exp-adjust-from-word-3.patch",

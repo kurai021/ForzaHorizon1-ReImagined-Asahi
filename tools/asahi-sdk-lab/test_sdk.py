@@ -56,6 +56,16 @@ class SdkVerificationTests(unittest.TestCase):
         with patch.object(sdk, "LOCK", path), self.assertRaisesRegex(RuntimeError, "checksum mismatch"):
             sdk.load_lock()
 
+    def test_version_metadata_is_part_of_verification(self):
+        sdk.git(self.repo, "tag", "v1.0.0")
+        description = sdk.git(self.repo, "describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*", "--exclude", "*-*")
+        lock = {"sdkCommit": self.commit, "inheritedPatches": [], "asahiPatches": [],
+                "sdlPatches": [], "submodules": [], "versionDescribe": description}
+        self.assertTrue(sdk.verify(self.repo, lock)["verified"])
+        lock["versionDescribe"] = "v1.0.0-999-g0000000"
+        with self.assertRaisesRegex(RuntimeError, "version history differs"):
+            sdk.verify(self.repo, lock)
+
 
 if __name__ == "__main__":
     unittest.main()
