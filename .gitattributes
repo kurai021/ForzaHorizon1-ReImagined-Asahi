@@ -1,4 +1,5 @@
 # Patches must stay byte-exact (a Windows checkout with autocrlf would break git apply).
 patches/** -text
-*.patch -text whitespace=-blank-at-eol
+# A patch's final context line may itself represent a blank source line.
+*.patch -text whitespace=-blank-at-eol,-blank-at-eof
 *.sh text eol=lf

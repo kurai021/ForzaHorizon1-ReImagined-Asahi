@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "packages": [
+    {"nevra": "perf-7.1.13-402.asahi.fc44.aarch64", "sha256": "27d36ef7ccc1192911e2d3df6c53554b59c249ea02a20965c89682448667ef2c"},
+    {"nevra": "opencsd-1.6.1-2.fc44.aarch64", "sha256": "2f6ab53e10e5df6198b264e6d9ed74ac86e68d9138564b8fa34562f0db5dbabb"},
+    {"nevra": "capstone-5.0.6-4.fc44.aarch64", "sha256": "62710c854bcdddf888497611d165094cd7916ccd52b0c8043c29c83d9ffe499f"},
+    {"nevra": "libtraceevent-1.8.4-5.fc44.aarch64", "sha256": "e3bf7496d1829180104bf7dfe905f5d76b169a6f8d72770980423f5ae8ffc9de"}
+  ]
+}
