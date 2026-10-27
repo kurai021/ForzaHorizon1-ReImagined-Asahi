@@ -107,6 +107,10 @@ owned process trees using PID/start-time/boot checks. It cannot repair a kernel
 or firmware hang. CPU-only simulated-process tests exercise those safeguards;
 they do not replace a stability review before further GPU work.
 
-Consolidate the existing evidence and agree on the incomplete Stage 1 scope
-before proceeding to deep profiling or renderer changes. Additional runs should
-answer a specific question rather than merely fill the missing table rows.
+The owner subsequently authorized a bounded stability review and transition to
+profiling. Stage 1 is provisionally closed with the above incomplete matrix and
+open stability issue; no missing repetitions were manufactured or restarted.
+See the [stability review and Phase 2 entry](asahi-stability-and-profiling.md) for
+the shutdown timeline, decision to defer reproduction and offline profiling
+findings. Additional runs should answer a specific question rather than merely
+fill the missing table rows.
