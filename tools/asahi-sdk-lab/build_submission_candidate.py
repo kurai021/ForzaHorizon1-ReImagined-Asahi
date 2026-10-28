@@ -35,9 +35,11 @@ def sha(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def compile_command(line, overlay, lab, output, replacements):
+def compile_command(line, overlay, lab, output, replacements, source_files=FILES):
     result = syntax_command(line, overlay)[:-1]  # remove -fsyntax-only
     result = [replacements.get(word, word) for word in result]
+    source_mapping = {str(SDK / name): str(overlay / name) for name in source_files}
+    result = [source_mapping.get(word, word) for word in result]
     result = ["-I" + str(lab) if word == "-I" + str(HERE) else word for word in result]
     return result + ["-c", "-o", str(output)]
 
@@ -175,12 +177,16 @@ def audit_plan(plan):
                 raise RuntimeError("Unexpected runtime search path")
 
 
-def prepare():
+def prepare(render_pass_reuse=False, readback_profile=False):
+    if render_pass_reuse and readback_profile:
+        raise ValueError('Evaluate readback telemetry independently of render-pass reuse')
     require_memory()  # use the conservative 6 GiB launch reserve for builds too
     if shutil.disk_usage(ROOT).free < 4 * 1024**3:
         raise RuntimeError("Need at least 4 GiB disk headroom")
     preserved = preserved_inputs()
-    overlay_output = subprocess.check_output([sys.executable, "-B", str(HERE / "prepare_submission_profile.py")],
+    preparer = ("prepare_readback_profile.py" if readback_profile else
+                "prepare_render_pass_reuse.py" if render_pass_reuse else "prepare_submission_profile.py")
+    overlay_output = subprocess.check_output([sys.executable, "-B", str(HERE / preparer)],
                                              cwd=ROOT, text=True, timeout=60)
     overlay = ROOT / json.loads(overlay_output)["overlay"]
     source_manifest = json.loads((overlay / "manifest.json").read_text())
@@ -200,7 +206,9 @@ def prepare():
             actual = LAB / "game-base/librexruntime.so" if path.name == "librexruntime.so" else path
             dependencies[str(path)] = {"source": str(actual), "sha256": sha(actual)}
     lab_files = ("backend.cpp", "workloads.cpp", "workloads.h", "raster.cpp", "main.cpp",
-                 "memory_alias.cpp", "candidate_check.cpp", "asahi_submission_profile.h")
+                  "memory_alias.cpp", "candidate_check.cpp", "asahi_submission_profile.h")
+    if readback_profile:
+        lab_files += ("readback_gate.inc",)
     pch = BUILD / "src/graphics/CMakeFiles/rexgpu-xenos.dir/Release/cmake_pch.hxx"
     inputs = {"schema": 1, "builderSha256": sha(Path(__file__)), "overlay": source_manifest,
               "graph": targets, "dependencies": dependencies, "preserved": preserved,
@@ -208,7 +216,8 @@ def prepare():
     token = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()[:16]
     candidate = OUT / token
     candidate.mkdir(parents=True, exist_ok=True)
-    for name in FILES:
+    overlay_files = tuple(source_manifest["overlayFiles"])
+    for name in overlay_files:
         copy_new(overlay / name, candidate / "overlay" / name)
     for name in lab_files:
         copy_new(HERE / name, candidate / "lab" / name)
@@ -234,7 +243,12 @@ def prepare():
             output.parent.mkdir(exist_ok=True)
             objects[old_object] = output
             units.append({"name": f"{target}-c{index:02d}", "output": str(output),
-                          "command": compile_command(line, candidate / "overlay", candidate / "lab", output, mapping)})
+                           "command": compile_command(line, candidate / "overlay", candidate / "lab", output, mapping,
+                                                      overlay_files)})
+            if render_pass_reuse:
+                units[-1]["command"].insert(1, "-DREX_ASAHI_RENDER_PASS_REUSE=1")
+            if readback_profile:
+                units[-1]["command"].insert(1, "-DREX_ASAHI_READBACK_GATE=1")
         output = candidate / "runtime" / ("librexgpu-xenos.so" if target == "plugin" else target)
         units.append({"name": target + "-link", "output": str(output),
                       "command": link_command(link, objects, link_deps, output)})
@@ -318,7 +332,11 @@ def validate(plan):
     runtime = candidate / "runtime"
     env = os.environ | {"LD_LIBRARY_PATH": str(runtime), "TMPDIR": str(candidate / "tmp"),
                         "XDG_DATA_HOME": str(candidate / "host-data"), "XDG_CACHE_HOME": str(candidate / "cache"),
-                        "VK_DRIVER_FILES": "/dev/null"}
+                         "VK_DRIVER_FILES": "/dev/null"}
+    env["ASAHI_EXPECT_RENDER_PASS_REUSE"] = str(int(
+        plan["inputs"]["overlay"].get("experiment") == "single-rgba8-1x-cache-identity"))
+    env["ASAHI_EXPECT_READBACK_PROFILE"] = str(int(
+        plan["inputs"]["overlay"].get("experiment") == "resolve-readback-reasons"))
     prefix = "candidate-" + plan["token"][:8]
     records = {}
     for name, command in (("loader", [runtime / "asahi_candidate_check"]),
@@ -329,6 +347,11 @@ def validate(plan):
         raise RuntimeError("Alias invariant did not report PASS")
     if "LAB OFFLINE:" not in (records["offline"] / "stdout.log").read_text():
         raise RuntimeError("Offline probe did not confirm CPU-only mode")
+    if env["ASAHI_EXPECT_READBACK_PROFILE"] == "1":
+        records["readback-layout"] = run_step(prefix + "-readback-layout",
+            [runtime / "asahi_sdk_probe", "readback-layout"], 60, runtime, env)
+        if (records["readback-layout"] / "stdout.log").read_text().count("LAB RESOLVE LAYOUT PASS ") != 2:
+            raise RuntimeError("Synthetic resolve rectangle layout did not pass CPU proof")
     records["spirv"] = run_step(prefix + "-spirv", [sys.executable, "-B", HERE / "validate_spirv.py",
                                                     records["offline"] / "artifacts"], 60, ROOT, env)
     records["relocations"] = run_step(prefix + "-relocations", ["ldd", "-r", runtime / "librexgpu-xenos.so"], 30, runtime, env)
@@ -350,12 +373,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--resume", action="store_true")
+    experiments = parser.add_mutually_exclusive_group()
+    experiments.add_argument("--render-pass-reuse", action="store_true", help="Include the optional, default-off cache-identity experiment")
+    experiments.add_argument("--readback-profile", action="store_true", help="Independent default-off resolve-readback reasons recorder")
     parser.add_argument("--execute", nargs=2, metavar=("PLAN", "INDEX"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.execute:
         execute(Path(args.execute[0]), int(args.execute[1]))
         return
-    plan_path, plan = prepare()
+    plan_path, plan = prepare(args.render_pass_reuse, args.readback_profile)
     if args.build:
         build_candidate(plan_path, plan, args.resume)
         validate(plan)

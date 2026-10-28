@@ -16,6 +16,21 @@ import play_probe
 
 
 class CandidatePlayTests(unittest.TestCase):
+    def test_reuse_mode_is_explicit_and_requires_supported_candidate(self):
+        self.assertEqual(c.render_pass_reuse_flags(None, None), [])
+        with self.assertRaises(ValueError):
+            c.render_pass_reuse_flags(None, 'on')
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            plan = {'inputs': {'overlay': {}}}
+            (directory / 'plan.json').write_text(json.dumps(plan))
+            with self.assertRaises(ValueError):
+                c.render_pass_reuse_flags(directory, 'on')
+            plan['inputs']['overlay']['experiment'] = 'single-rgba8-1x-cache-identity'
+            (directory / 'plan.json').write_text(json.dumps(plan))
+            self.assertEqual(c.render_pass_reuse_flags(directory, 'off'), ['--fh1_asahi_render_pass_reuse=false'])
+            self.assertEqual(c.render_pass_reuse_flags(directory, 'on'), ['--fh1_asahi_render_pass_reuse=true'])
+
     def test_candidate_runtime_hashes_are_mandatory(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -161,11 +176,55 @@ class CandidatePlayTests(unittest.TestCase):
             result = c.abort_game_with_observation(process, owned, ['123'])
         self.assertFalse(result['supervisorCompleted'])
 
+    def test_resource_abort_without_live_game_still_waits_for_supervisor_observation(self):
+        from unittest.mock import Mock
+        process = Mock()
+        process.wait.return_value = 125
+        owned = Mock(identities={})
+        with patch.object(c.os, 'kill') as kill:
+            result = c.abort_game_with_observation(process, owned, [])
+        self.assertEqual(result['signaledGames'], [])
+        self.assertTrue(result['supervisorCompleted'])
+        process.wait.assert_called_once_with(timeout=45)
+        kill.assert_not_called()
+
+    def test_launcher_resource_abort_preserves_observation_before_owned_cleanup(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / 'game-base').mkdir()
+            (directory / 'game-base/forza').touch()
+            (directory / 'logs').mkdir()
+            (directory / 'default.xex').touch()
+            process = Mock(returncode=0)
+            process.poll.return_value = None
+            owned = Mock()
+            owned.finish.return_value = {'remainingPids': []}
+            args = ['play_probe.py', '--name', 'resource-abort-test', '--game-root', str(directory),
+                    '--profile', str(directory / 'profile'), '--no-validation']
+            sample = {'availableMiB': 8000}
+            with patch.object(sys, 'argv', args), patch.object(play_probe, 'LAB', directory), \
+                 patch.object(play_probe, 'require_memory', return_value=sample), \
+                 patch.object(play_probe, 'memory_snapshot', return_value=sample), \
+                 patch.object(play_probe, 'memory_problem', return_value='swap limit exceeded'), \
+                 patch.object(play_probe.shutil, 'which', return_value='/bin/test'), \
+                 patch.object(play_probe.subprocess, 'Popen', return_value=process), \
+                 patch.object(play_probe.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '')), \
+                 patch.object(play_probe, 'OwnedProcesses', return_value=owned), \
+                 patch.object(play_probe, 'abort_game_with_observation', return_value={'supervisorCompleted': True}) as observe, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(play_probe.main(), 2)
+            observe.assert_called_once_with(process, owned, [])
+            owned.stop.assert_not_called()
+            owned.finish.assert_called_once()
+            self.assertEqual(json.loads((directory / 'STOP-GPU.json').read_text())['reason'], 'swap limit exceeded')
+
     def test_plan_only_never_creates_profile_or_starts_game(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / 'forza').touch()
             (directory / 'default.xex').touch()
+            (directory / 'plan.json').write_text(json.dumps({'inputs': {'overlay': {}}}))
             profile = directory / 'new-profile'
             arguments = ['play_probe.py', '--name', 'cpu-plan', '--seconds', '180', '--candidate', str(directory),
                          '--game-root', str(directory), '--profile', str(profile), '--physical-720p',
@@ -185,6 +244,63 @@ class CandidatePlayTests(unittest.TestCase):
             self.assertFalse(plan['gameLaunched'])
             self.assertIn('--fh1_submission_profile_csv=', plan['command'])
             self.assertIn('LD_LIBRARY_PATH=' + str(directory), plan['command'])
+
+    def drm_plan(self, *, submission=True, ambient=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / 'forza').touch()
+            (directory / 'default.xex').touch()
+            (directory / 'plan.json').write_text(json.dumps({'inputs': {'overlay': {}}}))
+            profile = directory / 'new-profile'
+            probe = directory / 'probe'
+            arguments = ['play_probe.py', '--name', 'drm-plan', '--seconds', '180',
+                         '--candidate', str(directory), '--game-root', str(directory), '--profile', str(profile),
+                         '--physical-720p', '--scene-msaa', 'off', '--no-validation', '--plan-only',
+                         '--drm-ioctl-probe', str(probe)]
+            if submission:
+                arguments.append('--submission-profile')
+            env = {'LD_PRELOAD': str(probe / 'libprofile.so'), 'ASAHI_DRM_IOCTL_CSV': str(profile / 'drm-ioctl.csv'),
+                   'ASAHI_DRM_IOCTL_TARGET': str(directory / 'forza'), 'ASAHI_DRM_IOCTL_START': '75',
+                   'ASAHI_DRM_IOCTL_SECONDS': '40', 'ASAHI_DRM_IOCTL_MAX_RECORDS': '262144'}
+            output = io.StringIO()
+            with patch.object(sys, 'argv', arguments), patch.dict(os.environ, ambient or {}, clear=True), \
+                 patch.object(play_probe, 'verified_runtime', return_value=directory), \
+                 patch.object(play_probe, 'launch_environment', return_value=env) as launch_env, \
+                 patch.object(play_probe, 'PLAY_ROOT', directory), patch.object(play_probe, 'LAB', directory / 'lab'), \
+                 patch.object(play_probe, 'require_memory'), patch.object(play_probe, 'require_cooldown'), \
+                 patch.object(play_probe.shutil, 'which', return_value='/bin/test'), \
+                 patch.object(play_probe.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)), \
+                 patch.object(play_probe.subprocess, 'Popen') as launch, \
+                 contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+                try:
+                    result = play_probe.main()
+                finally:
+                    launch.assert_not_called()
+                    self.assertFalse(profile.exists())
+                launch_env.assert_called_once_with(probe, directory / 'forza', profile / 'drm-ioctl.csv', 80, 30)
+                self.assertNotIn('LD_PRELOAD', os.environ)
+            self.assertEqual(result, 0)
+            return json.loads(output.getvalue()), env
+
+    def test_drm_plan_preloads_only_game_after_timeout_not_supervisor_or_helpers(self):
+        plan, env = self.drm_plan(ambient={'ASAHI_DRM_IOCTL_OWNER_PID': 'stale'})
+        command = plan['command']
+        timeout = command.index('timeout')
+        preload = command.index('LD_PRELOAD=' + env['LD_PRELOAD'])
+        executable = command.index(env['ASAHI_DRM_IOCTL_TARGET'])
+        self.assertLess(timeout, preload)
+        self.assertLess(preload, executable)
+        self.assertEqual(command[timeout + 5:preload], ['env', '-u', 'ASAHI_DRM_IOCTL_OWNER_PID'])
+        self.assertFalse(any(value.startswith(('LD_PRELOAD=', 'ASAHI_DRM_IOCTL_')) for value in command[:timeout]))
+        self.assertFalse(plan['gameLaunched'])
+        self.assertTrue(plan['drmIoctlProbeRequested'])
+        self.assertTrue(plan['submissionRecording'])
+
+    def test_drm_plan_requires_submission_recording_and_no_ambient_preload(self):
+        for options in ({'submission': False}, {'ambient': {'LD_PRELOAD': '/ambient.so'}}):
+            with self.subTest(options=options), self.assertRaises(SystemExit) as error:
+                self.drm_plan(**options)
+            self.assertEqual(error.exception.code, 2)
 
 
 if __name__ == '__main__':

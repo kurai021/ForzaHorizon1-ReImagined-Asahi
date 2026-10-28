@@ -1,0 +1,46 @@
+--- a/include/rex/graphics/vulkan/render_target_cache.h
++++ b/include/rex/graphics/vulkan/render_target_cache.h
+@@ -287,3 +287,5 @@
+   VulkanCommandProcessor& command_processor_;
++  // Latched before cache creation; never mix on/off identities in one cache.
++  const bool asahi_render_pass_reuse_;
+ 
+   Path path_ = Path::kHostRenderTargets;
+--- a/src/graphics/vulkan/render_target_cache.cpp
++++ b/src/graphics/vulkan/render_target_cache.cpp
+@@ -33,6 +33,7 @@
+ #include <rex/graphics/vulkan/command_processor.h>
+ #include <rex/graphics/vulkan/deferred_command_buffer.h>
+ #include <rex/graphics/vulkan/render_target_cache.h>
++#include <rex/graphics/vulkan/asahi_render_pass_reuse.h>
+ #include <rex/graphics/xenos.h>
+ #include <rex/logging.h>
+ #include <rex/math.h>
+@@ -54,1 +55,5 @@
++REXCVAR_DEFINE_BOOL(fh1_asahi_render_pass_reuse, false, "GPU/Vulkan",
++                     "Testing: share identical single-RGBA8 1x transfer/draw cache entries")
++    .lifecycle(rex::cvar::Lifecycle::kInitOnly);
++
+ // DEFINE_string(
+@@ -197,6 +202,7 @@
+                                                  VulkanCommandProcessor& command_processor)
+     : RenderTargetCache(register_file, memory, draw_resolution_scale_x, draw_resolution_scale_y),
+-      command_processor_(command_processor) {}
++      command_processor_(command_processor),
++      asahi_render_pass_reuse_(REXCVAR_GET(fh1_asahi_render_pass_reuse)) {}
+ 
+ VulkanRenderTargetCache::~VulkanRenderTargetCache() {
+   Shutdown(true);
+@@ -1596,5 +1602,6 @@
+ VkRenderPass VulkanRenderTargetCache::GetHostRenderTargetsRenderPass(RenderPassKey key) {
+   assert_true(GetPath() == Path::kHostRenderTargets);
++  key = render_pass_reuse::CacheKey(key, asahi_render_pass_reuse_);
+ 
+   auto it = render_passes_.find(key);
+   if (it != render_passes_.end()) {
+@@ -2273,4 +2280,5 @@
+     const RenderTarget* const* depth_and_color_render_targets) {
+   FramebufferKey key;
++  render_pass_key = render_pass_reuse::CacheKey(render_pass_key, asahi_render_pass_reuse_);
+   key.render_pass_key = render_pass_key;
+   key.pitch_tiles_at_32bpp = pitch_tiles_at_32bpp;

@@ -33,6 +33,14 @@ class CandidateTests(unittest.TestCase):
         self.assertIn('-Wl,-rpath,$ORIGIN', result)
         self.assertIn('-Wl,-z,defs', result)
 
+    def test_optional_render_target_source_is_compiled_from_overlay(self):
+        name = 'src/graphics/vulkan/render_target_cache.cpp'
+        line = f'/usr/bin/clang++ -O3 -c {b.SDK / name} -o /old.o'
+        result = b.compile_command(line, Path('/candidate/overlay'), Path('/candidate/lab'),
+                                   Path('/candidate/new.o'), {}, (*b.FILES, name))
+        self.assertIn('/candidate/overlay/' + name, result)
+        self.assertNotIn(str(b.SDK / name), result)
+
     def test_link_rejects_old_or_missing_objects(self):
         for objects in ({}, {'/build/new.o': Path('/candidate/new.o')}):
             with self.assertRaises(RuntimeError):

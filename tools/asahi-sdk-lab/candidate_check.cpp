@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <link.h>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -29,13 +30,33 @@ int main(int argc, char** argv) {
   if (!plugin) { std::fprintf(stderr, "%s\n", dlerror()); return 65; }
   if (!dlsym(plugin, "AsahiSdkLabRun")) return 66;
   unsigned found = 0;
+  bool reuse_found = false;
+  unsigned readback_found = 0;
   for (const auto& flag : rex::cvar::GetRegistry()) {
     if (flag.name == "fh1_submission_profile_csv" || flag.name == "fh1_submission_profile_start" ||
-        flag.name == "fh1_submission_profile_seconds") ++found;
+         flag.name == "fh1_submission_profile_seconds") ++found;
+    if (flag.name == "fh1_asahi_render_pass_reuse") reuse_found = true;
+    if (flag.name == "fh1_readback_profile_csv" || flag.name == "fh1_readback_profile_start" ||
+        flag.name == "fh1_readback_profile_seconds") ++readback_found;
   }
   if (found != 3 || !rex::cvar::GetFlagByName("fh1_submission_profile_csv").empty() ||
       std::stod(rex::cvar::GetFlagByName("fh1_submission_profile_start")) != 80 ||
-      std::stod(rex::cvar::GetFlagByName("fh1_submission_profile_seconds")) != 30) return 67;
+       std::stod(rex::cvar::GetFlagByName("fh1_submission_profile_seconds")) != 30) return 67;
+  const char* expected = std::getenv("ASAHI_EXPECT_RENDER_PASS_REUSE");
+  if (expected && reuse_found != (std::string(expected) == "1")) return 69;
+  if (reuse_found) {
+    const auto value = rex::cvar::GetFlagByName("fh1_asahi_render_pass_reuse");
+    if (value != "false" && value != "0") return 70;
+    std::puts("PASS: optional render-pass cache reuse registered and disabled by default");
+  }
+  const char* expect_readback = std::getenv("ASAHI_EXPECT_READBACK_PROFILE");
+  if (expect_readback && readback_found != (std::string(expect_readback) == "1" ? 3u : 0u)) return 71;
+  if (readback_found) {
+    if (readback_found != 3 || !rex::cvar::GetFlagByName("fh1_readback_profile_csv").empty() ||
+        std::stod(rex::cvar::GetFlagByName("fh1_readback_profile_start")) != 80 ||
+        std::stod(rex::cvar::GetFlagByName("fh1_readback_profile_seconds")) != 30) return 72;
+    std::puts("PASS: three optional readback variables registered; recording disabled by default");
+  }
   Libraries libraries;
   dl_iterate_phdr(Inspect, &libraries);
   if (libraries.driver || libraries.runtime.size() != 1 ||

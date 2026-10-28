@@ -497,3 +497,11 @@ the `asahi` preservation branch, tags, releases and remote settings are outside
 this checkpoint's publication scope. Unisolated observer overhead, the unique
 frame critical path and the old termination-associated stability issue remain
 open; this is not a Phase 3 optimization or a stable-30-FPS claim.
+
+The [offline timeline/driver-route follow-up](asahi-submission-timeline.md)
+separates ongoing host submission cost from readback-associated frame spikes,
+validates tagged versus asynchronous execution intervals, and records why the
+reference driver's conservative batching limit must not be overridden.
+The subsequent [DRM preparation notes](asahi-drm-ioctl-instrumentation.md) describe
+the optional process-local interposer, bounded CPU validation and remaining live
+reachability/overhead gates; this is not another GPU capture or SDK installation.

@@ -1,4 +1,5 @@
-"""Memory limits and identity-checked cleanup of this test's own process tree."""
+"""Memory limits, optional checkout-local swap/PSI policy, and owned-process cleanup."""
+import json
 import os
 from pathlib import Path
 import signal
@@ -8,6 +9,35 @@ import time
 START_FREE_MIB = 6144
 ABORT_FREE_MIB = 3072
 MAX_SWAP_GROWTH_MIB = 512
+SWAP_POLICY = Path(__file__).resolve().parents[2] / "forza-recomp/out/asahi-sdk-lab/swap-growth-policy.local.json"
+
+
+def local_resource_policy(path=None):
+    """Only the two explicitly authorized global memory metrics are overridable."""
+    path = SWAP_POLICY if path is None else path
+    try:
+        with path.open("rb") as source:
+            contents = source.read(1025)
+    except FileNotFoundError:
+        return {"enforceSwapGrowth": True, "enforceMemoryPressure": True}
+    if len(contents) > 1024:
+        raise RuntimeError("Local swap policy exceeds 1024 bytes")
+    try:
+        policy = json.loads(contents)
+    except (ValueError, UnicodeDecodeError) as error:
+        raise RuntimeError("Invalid local swap policy JSON") from error
+    if (not isinstance(policy, dict) or not {"schema", "enforceSwapGrowth"}.issubset(policy) or
+            not set(policy).issubset({"schema", "enforceSwapGrowth", "enforceMemoryPressure"}) or
+            type(policy["schema"]) is not int or policy["schema"] != 1 or
+            type(policy["enforceSwapGrowth"]) is not bool or
+            type(policy.get("enforceMemoryPressure", True)) is not bool):
+        raise RuntimeError("Use schema 1 and boolean swap/PSI options; no other guard overrides")
+    return {"enforceSwapGrowth": policy["enforceSwapGrowth"],
+            "enforceMemoryPressure": policy.get("enforceMemoryPressure", True)}
+
+
+def swap_growth_guard_enabled(path=None):
+    return local_resource_policy(path)["enforceSwapGrowth"]
 
 
 def parse_memory(meminfo, pressure=""):
@@ -31,15 +61,23 @@ def memory_snapshot():
     values = parse_memory(Path("/proc/meminfo").read_text(), pressure.read_text() if pressure.exists() else "")
     values["pressureAvailable"] = pressure.exists()
     values["epoch"] = time.time()
+    policy = local_resource_policy()
+    values["swapGrowthGuardEnabled"] = policy["enforceSwapGrowth"]
+    values["swapGrowthLimitMiB"] = MAX_SWAP_GROWTH_MIB if values["swapGrowthGuardEnabled"] else None
+    values["memoryPressureGuardEnabled"] = policy["enforceMemoryPressure"]
     return values
 
 
 def memory_problem(sample, initial, floor=ABORT_FREE_MIB):
     if sample["availableMiB"] < floor:
         return f"physical memory reserve below {floor} MiB"
-    if sample["swapUsedMiB"] - initial["swapUsedMiB"] > MAX_SWAP_GROWTH_MIB:
+    # Latch the policy from the initial snapshot for this run. Later policy-file
+    # changes cannot silently loosen a running test's selected safeguards.
+    if (initial.get("swapGrowthGuardEnabled", True) and
+            sample["swapUsedMiB"] - initial["swapUsedMiB"] > MAX_SWAP_GROWTH_MIB):
         return "swap grew by more than 512 MiB during the test"
-    if sample["pressureFullAvg10"] >= 1 or sample["pressureSomeAvg10"] >= 5:
+    if (initial.get("memoryPressureGuardEnabled", True) and
+            (sample["pressureFullAvg10"] >= 1 or sample["pressureSomeAvg10"] >= 5)):
         return "sustained memory reclaim/stall pressure"
     return None
 

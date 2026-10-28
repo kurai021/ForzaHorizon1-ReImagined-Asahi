@@ -121,7 +121,7 @@ def main():
         raise RuntimeError("Memory reserve or pressure disallows a new test")
     if args.gpu:
         if (LAB / "STOP-GPU.json").exists():
-            raise RuntimeError("GPU experiments stopped by earlier kernel error; inspect STOP-GPU.json")
+            raise RuntimeError("GPU experiments suspended by an earlier trial; inspect STOP-GPU.json")
         preflight_kernel = read_kernel("3 minutes ago")
         (directory / "preflight-kernel.log").write_text(preflight_kernel["kernelLog"])
         if not preflight_kernel["kernelReadable"] or preflight_kernel["kernelError"]:
@@ -149,8 +149,10 @@ def main():
         print("GPU verified:", json.dumps(identity), flush=True)
     since = dt.datetime.now(dt.timezone.utc).isoformat()
     metadata = {"command": command, "cwd": str(args.cwd), "limitSeconds": args.seconds,
-                "gpu": identity, "since": since, "icd": str(ICD) if args.gpu else None,
-                 "localValidation": args.validation, "artifacts": env["ASAHI_LAB_OUTPUT"]}
+                 "gpu": identity, "since": since, "icd": str(ICD) if args.gpu else None,
+                 "swapGrowthGuardEnabled": initial_memory.get("swapGrowthGuardEnabled", True),
+                 "memoryPressureGuardEnabled": initial_memory.get("memoryPressureGuardEnabled", True),
+                  "localValidation": args.validation, "artifacts": env["ASAHI_LAB_OUTPUT"]}
     guest_log = next((Path(arg.split("=", 1)[1]) for arg in command
                       if arg.startswith("--log_file=")), None)
     if guest_log is not None and not guest_log.is_absolute():

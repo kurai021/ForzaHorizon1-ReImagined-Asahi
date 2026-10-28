@@ -59,6 +59,36 @@ def session_flags(profile, physical, recording, start, duration, instrumented=Tr
     return flags
 
 
+def render_pass_reuse_flags(candidate, mode):
+    if mode is None:
+        return []
+    if candidate is None or mode not in ('on', 'off'):
+        raise ValueError('Render-pass reuse requires an explicit candidate and on/off mode')
+    plan = json.loads((candidate.resolve() / 'plan.json').read_text())
+    if plan['inputs']['overlay'].get('experiment') != 'single-rgba8-1x-cache-identity':
+        raise ValueError('Candidate does not contain the optional render-pass reuse patch')
+    return ['--fh1_asahi_render_pass_reuse=' + str(mode == 'on').lower()]
+
+
+def readback_profile_flags(candidate, profile, enabled, start, duration, seconds):
+    if enabled and (candidate is None or not 25 <= start <= 120 or not 1 <= duration <= 45 or
+                    start + duration + 20 > seconds):
+        raise ValueError('Readback recording needs a candidate and a warmed 1..45 s window with 20 s after export')
+    if candidate is None:
+        return []
+    plan = json.loads((candidate.resolve() / 'plan.json').read_text())
+    contains = plan['inputs']['overlay'].get('experiment') == 'resolve-readback-reasons'
+    if enabled and not contains:
+        raise ValueError('Candidate does not contain the optional readback recorder')
+    if not contains:
+        return []
+    # Explicitly disable recording even if a saved profile requests it.
+    flags = ['--fh1_readback_profile_csv=' + (str(profile / 'readback.csv') if enabled else '')]
+    if enabled:
+        flags += [f'--fh1_readback_profile_start={start}', f'--fh1_readback_profile_seconds={duration}']
+    return flags
+
+
 def require_cooldown(logs, now=None):
     now = time.time() if now is None else now
     for path in logs.glob("*/result.json"):
@@ -140,8 +170,9 @@ def abort_game_with_observation(process, owned, games):
                 signaled.append(pid)
             except ProcessLookupError:
                 pass
-    if not signaled:
-        return {"signaledGames": [], "supervisorCompleted": process.poll() is not None}
+    # The supervisor may already have stopped the game for resource pressure.
+    # Even with no live game to signal, let its bounded post-exit observation
+    # finish before the outer owner performs whole-tree cleanup.
     try:
         code = process.wait(timeout=45)
         return {"signaledGames": signaled, "supervisorCompleted": True, "returncode": code}

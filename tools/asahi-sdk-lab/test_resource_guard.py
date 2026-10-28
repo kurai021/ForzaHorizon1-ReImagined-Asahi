@@ -1,5 +1,8 @@
 """Resource failures and descendant cleanup tested without GPU or memory stress."""
 import subprocess
+import json
+from pathlib import Path
+import tempfile
 import sys
 import time
 import unittest
@@ -23,6 +26,99 @@ class ResourceGuardTests(unittest.TestCase):
         for changes in ({"availableMiB": 3000}, {"swapUsedMiB": 513}, {"pressureFullAvg10": 1.1}):
             with self.subTest(changes=changes):
                 self.assertIsNotNone(guard.memory_problem(initial | changes, initial))
+
+    def test_local_swap_policy_defaults_on_and_accepts_explicit_boolean(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'policy.json'
+            self.assertTrue(guard.swap_growth_guard_enabled(path))
+            for enabled in (False, True):
+                path.write_text(json.dumps({'schema': 1, 'enforceSwapGrowth': enabled}))
+                self.assertIs(guard.swap_growth_guard_enabled(path), enabled)
+
+    def test_malformed_or_broader_policy_cannot_disable_other_guards(self):
+        cases = ('not json', '[]', '{"schema":1,"enforceSwapGrowth":"false"}',
+                 '{"schema":true,"enforceSwapGrowth":false}',
+                 '{"schema":2,"enforceSwapGrowth":false}',
+                 '{"schema":1,"enforceSwapGrowth":false,"ignoreKernelErrors":true}',
+                 ' ' * 1025)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'policy.json'
+            for contents in cases:
+                with self.subTest(contents=contents[:80]):
+                    path.write_text(contents)
+                    with self.assertRaises(RuntimeError):
+                        guard.swap_growth_guard_enabled(path)
+
+    def test_disabled_swap_cutoff_does_not_abort_for_swap_alone(self):
+        initial = self.sample() | {'swapGrowthGuardEnabled': False}
+        self.assertIsNone(guard.memory_problem(initial | {'swapUsedMiB': 4096}, initial))
+
+    def test_disabled_swap_cutoff_preserves_ram_and_both_psi_checks(self):
+        initial = self.sample() | {'swapGrowthGuardEnabled': False}
+        for changes in ({'availableMiB': 3000}, {'pressureFullAvg10': 1.1}, {'pressureSomeAvg10': 5.1}):
+            with self.subTest(changes=changes):
+                self.assertIsNotNone(guard.memory_problem(initial | {'swapUsedMiB': 4096} | changes, initial))
+
+    def test_swap_policy_is_latched_from_initial_snapshot(self):
+        initial = self.sample() | {'swapGrowthGuardEnabled': True}
+        later = initial | {'swapUsedMiB': 513, 'swapGrowthGuardEnabled': False}
+        self.assertIsNotNone(guard.memory_problem(later, initial))
+        self.assertIsNone(guard.memory_problem(later | {'swapGrowthGuardEnabled': True},
+                                             initial | {'swapGrowthGuardEnabled': False}))
+
+    def test_snapshot_records_disabled_policy_but_still_measures_swap(self):
+        with patch.object(guard, 'local_resource_policy', return_value={
+                'enforceSwapGrowth': False, 'enforceMemoryPressure': True}):
+            sample = guard.memory_snapshot()
+        self.assertFalse(sample['swapGrowthGuardEnabled'])
+        self.assertIsNone(sample['swapGrowthLimitMiB'])
+        self.assertGreaterEqual(sample['swapUsedMiB'], 0)
+
+    def test_psi_policy_defaults_on_in_missing_and_legacy_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'policy.json'
+            self.assertTrue(guard.local_resource_policy(path)['enforceMemoryPressure'])
+            path.write_text(json.dumps({'schema': 1, 'enforceSwapGrowth': False}))
+            self.assertTrue(guard.local_resource_policy(path)['enforceMemoryPressure'])
+
+    def test_explicit_psi_policy_requires_boolean(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'policy.json'
+            for value in (True, False):
+                path.write_text(json.dumps({'schema': 1, 'enforceSwapGrowth': False,
+                                            'enforceMemoryPressure': value}))
+                self.assertIs(guard.local_resource_policy(path)['enforceMemoryPressure'], value)
+            path.write_text(json.dumps({'schema': 1, 'enforceSwapGrowth': False,
+                                        'enforceMemoryPressure': 'false'}))
+            with self.assertRaises(RuntimeError):
+                guard.local_resource_policy(path)
+
+    def test_disabled_psi_preserves_ram_and_independent_swap_guard(self):
+        initial = self.sample() | {'memoryPressureGuardEnabled': False}
+        stalled = initial | {'pressureFullAvg10': 20, 'pressureSomeAvg10': 50}
+        self.assertIsNone(guard.memory_problem(stalled, initial))
+        self.assertIsNotNone(guard.memory_problem(stalled | {'availableMiB': 3000}, initial))
+        self.assertIsNotNone(guard.memory_problem(stalled | {'swapUsedMiB': 513}, initial))
+
+    def test_psi_policy_is_latched_from_initial_snapshot(self):
+        initial = self.sample() | {'memoryPressureGuardEnabled': True}
+        stalled = initial | {'pressureFullAvg10': 2, 'memoryPressureGuardEnabled': False}
+        self.assertIsNotNone(guard.memory_problem(stalled, initial))
+        self.assertIsNone(guard.memory_problem(stalled | {'memoryPressureGuardEnabled': True},
+                                             initial | {'memoryPressureGuardEnabled': False}))
+
+    def test_snapshot_records_disabled_psi_but_keeps_pressure_telemetry(self):
+        with patch.object(guard, 'local_resource_policy', return_value={
+                'enforceSwapGrowth': False, 'enforceMemoryPressure': False}):
+            sample = guard.memory_snapshot()
+        self.assertFalse(sample['memoryPressureGuardEnabled'])
+        self.assertIn('pressureFullAvg10', sample)
+        self.assertIn('pressureSomeAvg10', sample)
+
+    def test_launch_reserve_remains_required_when_swap_cutoff_is_disabled(self):
+        sample = self.sample() | {'swapGrowthGuardEnabled': False, 'availableMiB': 5000}
+        with patch.object(guard, 'memory_snapshot', return_value=sample), self.assertRaises(RuntimeError):
+            guard.require_memory()
 
     def test_reused_pid_is_never_signalled(self):
         process = unittest.mock.Mock(pid=999999)
