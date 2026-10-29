@@ -90,6 +90,18 @@ class PublicationAuditTests(unittest.TestCase):
         self.commit()
         self.assertTrue(self.run_audit()[0])
 
+    def test_unrelated_host_incidents_are_not_project_reports(self):
+        (self.repo / 'report.md').write_text('fs-' + 'verity: FILE ' + 'CORRUPTED, inode 123456\n')
+        self.commit()
+        code, report = self.run_audit()
+        self.assertTrue(code)
+        self.assertTrue(any('Unrelated host-system incident' in error for error in report['errors']))
+
+    def test_source_include_fragments_are_publishable(self):
+        (self.repo / 'fixture.inc').write_text('// Redistributable synthetic fixture.\n')
+        self.commit()
+        self.assertEqual(self.run_audit()[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

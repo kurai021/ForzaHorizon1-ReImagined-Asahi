@@ -184,6 +184,13 @@ void Backend(Graphics& graphics, bool workloads, bool integration = false, bool 
 
 extern "C" __attribute__((visibility("default"))) int AsahiSdkLabRun(const char* mode) {
   try {
+#ifdef REX_ASAHI_READBACK_GATE
+    if (std::strcmp(mode, "readback-layout") == 0) {
+      std::puts("LAB OFFLINE: resolve layout only; no Vulkan instance, device, or submission");
+      VerifyReadbackLayoutCpu();
+      return 0;
+    }
+#endif
     if (std::strcmp(mode, "offline") == 0) {
       std::puts("LAB OFFLINE: SPIR-V translation only; no Vulkan instance, device, or submission");
       TranslateFixtures(nullptr);

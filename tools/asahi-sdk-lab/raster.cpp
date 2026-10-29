@@ -9,6 +9,18 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#ifdef REX_ASAHI_READBACK_GATE
+#include <rex/cvar.h>
+#include <rex/graphics/pipeline/texture/util.h>
+#include <rex/system/xmemory.h>
+#include <src/graphics/fh1_frame_cost.h>
+#include <array>
+#include <chrono>
+#include <cstring>
+#include <thread>
+#include <vector>
+#include <rex/graphics/vulkan/asahi_readback_profile.h>
+#endif
 
 namespace rex::graphics::vulkan {
 struct AsahiSdkLabAccess {
@@ -132,11 +144,23 @@ struct AsahiSdkLabAccess {
                                std::to_string(target_height) + ")");
     std::printf("LAB INTEGRATION PASS raster-and-memexport: %u red pixels, first at %u,%u "
                 "(target %ux%u)\n", red_pixels, first_red_x, first_red_y, target_width,
-                target_height);
+                 target_height);
+#ifdef REX_ASAHI_READBACK_GATE
+    const char* resolve_gate = std::getenv("ASAHI_RUN_RESOLVE_GATE");
+    if (resolve_gate && std::string(resolve_gate) == "1") ReadResolveGate(commands, first_red_x, first_red_y);
+#endif
   }
+#ifdef REX_ASAHI_READBACK_GATE
+#include "readback_gate.inc"
+#endif
 };
 }
 
 void VerifyIntegratedRaster(rex::graphics::vulkan::VulkanCommandProcessor& commands) {
   rex::graphics::vulkan::AsahiSdkLabAccess::ReadColor(commands);
 }
+#ifdef REX_ASAHI_READBACK_GATE
+void VerifyReadbackLayoutCpu() {
+  rex::graphics::vulkan::AsahiSdkLabAccess::VerifyResolveLayoutCpu();
+}
+#endif
