@@ -14,7 +14,6 @@ from profiling_tools import PERF_ROOT, perf_environment
 from candidate_play import verified_runtime, session_flags, SurfaceLog, configure_owned_window, require_cooldown
 from candidate_play import loaded_candidate_libraries
 from candidate_play import window_api_preflight, abort_game_with_observation
-from candidate_play import render_pass_reuse_flags
 from candidate_play import readback_profile_flags
 from prepare_drm_ioctl_profile import launch_environment
 from resource_guard import process_identity
@@ -42,7 +41,6 @@ def main():
     parser.add_argument("--physical-720p", action="store_true", help="Owned Hyprland window only; require actual 1280x720 swapchain")
     parser.add_argument("--submission-profile", action="store_true", help="Enable the candidate's bounded submission recorder")
     parser.add_argument("--drm-ioctl-probe", type=Path, help="Explicitly preload a hash-verified private probe into the game only")
-    parser.add_argument("--render-pass-reuse", choices=("off", "on"), help="Explicit A/B mode for a candidate containing the optional cache-identity patch")
     parser.add_argument("--readback-profile", action="store_true", help="Optional resolve-reason recording, independent of DRM/perf and render-pass reuse")
     parser.add_argument("--plan-only", action="store_true", help="Print command without creating a profile or launching the game")
     args = parser.parse_args()
@@ -64,7 +62,7 @@ def main():
     if args.drm_ioctl_probe and (not args.submission_profile or os.environ.get("LD_PRELOAD")):
         parser.error("DRM probing requires --submission-profile and no ambient LD_PRELOAD; never mix interposers")
     if args.readback_profile and (args.validation or args.cpu_profile or args.drm_ioctl_probe or
-                                 args.render_pass_reuse is not None or os.environ.get('LD_PRELOAD')):
+                                 os.environ.get('LD_PRELOAD')):
         parser.error('Keep readback profiling independent: no validation/perf/DRM/reuse or ambient preload')
     if args.physical_720p and not shutil.which("hyprctl"):
         parser.error("Physical surface control currently requires Hyprland; do not change global display configuration")
@@ -73,10 +71,6 @@ def main():
     if not args.name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in args.name):
         parser.error("Use letters, digits, hyphens and underscores in the probe name")
     build = verified_runtime(args.candidate) if args.candidate else LAB / "game-base"
-    try:
-        reuse_flags = render_pass_reuse_flags(args.candidate, args.render_pass_reuse)
-    except (OSError, ValueError, KeyError) as error:
-        parser.error(str(error))
     if not (build / "forza").is_file() or not (args.game_root / "default.xex").is_file():
         parser.error("Build the game first and provide an existing local game extraction")
     if (LAB / "STOP-GPU.json").exists():
@@ -141,7 +135,6 @@ def main():
     if args.candidate or args.physical_720p:
         command += session_flags(profile, args.physical_720p, args.submission_profile,
                                   args.profile_start, args.profile_seconds, instrumented=bool(args.candidate))
-    command += reuse_flags
     command += readback_flags
     if args.candidate:
         libraries = str(build)
@@ -162,8 +155,7 @@ def main():
         print(json.dumps({"command": list(map(str, command)), "gameLaunched": False,
                           "runtime": str(build), "physical720pRequired": args.physical_720p,
                           "submissionRecording": args.submission_profile,
-                          "renderPassReuseRequested": args.render_pass_reuse,
-                          "readbackRecording": args.readback_profile,
+                           "readbackRecording": args.readback_profile,
                           "swapGrowthGuardEnabled": bool(initial_memory.get("swapGrowthGuardEnabled", True)),
                           "memoryPressureGuardEnabled": bool(initial_memory.get("memoryPressureGuardEnabled", True)),
                           "drmIoctlProbeRequested": bool(args.drm_ioctl_probe)}, indent=2))
@@ -320,7 +312,6 @@ def main():
             "memoryAborted": aborted, "abortReason": reason, "memoryBefore": initial_memory,
             "cpuProfileRequested": args.cpu_profile, "cpuProfileComplete": profile_complete,
             "drmIoctlProbeRequested": bool(args.drm_ioctl_probe),
-            "renderPassReuseRequested": args.render_pass_reuse,
             "memoryAfter": memory_snapshot(), "processCleanup": cleanup}, indent=2) + "\n")
     print(f"Minimum MemAvailable: {(minimum or 0) / 1024**2:.2f} GiB; memory abort: {aborted}")
     return process.returncode or (2 if aborted else 0)

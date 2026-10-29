@@ -13,13 +13,13 @@
 #include <rex/cvar.h>
 #include <rex/graphics/pipeline/texture/util.h>
 #include <rex/system/xmemory.h>
-#include <rex/graphics/vulkan/asahi_readback_profile.h>
 #include <src/graphics/fh1_frame_cost.h>
 #include <array>
 #include <chrono>
 #include <cstring>
 #include <thread>
 #include <vector>
+#include <rex/graphics/vulkan/asahi_readback_profile.h>
 #endif
 
 namespace rex::graphics::vulkan {
@@ -36,39 +36,6 @@ struct AsahiSdkLabAccess {
     const uint32_t target_width = target_key.GetWidth();
     const uint32_t target_height =
         cache.GetRenderTargetHeight(target_key.pitch_tiles_at_32bpp, target_key.msaa_samples);
-#ifdef REX_ASAHI_RENDER_PASS_REUSE
-    // Exercise the actual optional cache path, not a mock: same color image,
-    // unchanged single-RGBA8 attachment descriptions, all barriers retained.
-    if (format != VK_FORMAT_R8G8B8A8_UNORM ||
-        target_key.GetColorFormat() != xenos::ColorRenderTargetFormat::k_8_8_8_8 ||
-        target_key.msaa_samples != xenos::MsaaSamples::k1X)
-      throw std::runtime_error("render-pass reuse fixture requires the exact RGBA8 1x whitelist");
-    VulkanRenderTargetCache::RenderPassKey normal{};
-    normal.msaa_samples = xenos::MsaaSamples::k1X;
-    normal.depth_and_color_used = 0b10;
-    normal.color_0_view_format = xenos::ColorRenderTargetFormat::k_8_8_8_8;
-    auto transfer = normal;
-    transfer.color_rts_use_transfer_formats = 1;
-    const VulkanRenderTargetCache::RenderTarget* attachments[1+xenos::kMaxColorRenderTargets]{};
-    attachments[1] = color;
-    auto draw_pass = cache.GetHostRenderTargetsRenderPass(normal);
-    auto transfer_pass = cache.GetHostRenderTargetsRenderPass(transfer);
-    auto draw_fb = cache.GetHostRenderTargetsFramebuffer(normal, target_key.pitch_tiles_at_32bpp, attachments);
-    auto transfer_fb = cache.GetHostRenderTargetsFramebuffer(transfer, target_key.pitch_tiles_at_32bpp, attachments);
-    if (!draw_pass || !transfer_pass || !draw_fb || !transfer_fb ||
-        ((draw_pass == transfer_pass) != cache.asahi_render_pass_reuse_) ||
-        ((draw_fb == transfer_fb) != cache.asahi_render_pass_reuse_))
-      throw std::runtime_error("actual render-pass/framebuffer cache identity differs from selected mode");
-    if (!commands.BeginSubmission(true)) throw std::runtime_error("render-pass reuse begin");
-    commands.SubmitBarriers(true);
-    commands.SubmitBarriersAndEnterRenderTargetCacheRenderPass(draw_pass, draw_fb,
-                                                              color->view_depth_color(), false);
-    commands.SubmitBarriersAndEnterRenderTargetCacheRenderPass(transfer_pass, transfer_fb,
-                                                              color->view_color_transfer(), false);
-    commands.EndRenderPass();
-    std::printf("LAB REUSE CACHE PASS enabled=%d: actual handles, preserved attachment, normal barrier path\n",
-                int(cache.asahi_render_pass_reuse_));
-#endif
     std::printf("LAB raster target %ux%u\n", target_width, target_height);
     auto* device = commands.GetVulkanDevice();
     const auto& f = device->functions();

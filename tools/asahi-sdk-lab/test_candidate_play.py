@@ -16,21 +16,6 @@ import play_probe
 
 
 class CandidatePlayTests(unittest.TestCase):
-    def test_reuse_mode_is_explicit_and_requires_supported_candidate(self):
-        self.assertEqual(c.render_pass_reuse_flags(None, None), [])
-        with self.assertRaises(ValueError):
-            c.render_pass_reuse_flags(None, 'on')
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            plan = {'inputs': {'overlay': {}}}
-            (directory / 'plan.json').write_text(json.dumps(plan))
-            with self.assertRaises(ValueError):
-                c.render_pass_reuse_flags(directory, 'on')
-            plan['inputs']['overlay']['experiment'] = 'single-rgba8-1x-cache-identity'
-            (directory / 'plan.json').write_text(json.dumps(plan))
-            self.assertEqual(c.render_pass_reuse_flags(directory, 'off'), ['--fh1_asahi_render_pass_reuse=false'])
-            self.assertEqual(c.render_pass_reuse_flags(directory, 'on'), ['--fh1_asahi_render_pass_reuse=true'])
-
     def test_candidate_runtime_hashes_are_mandatory(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

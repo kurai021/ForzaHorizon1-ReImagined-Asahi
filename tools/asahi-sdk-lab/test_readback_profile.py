@@ -196,10 +196,9 @@ class ReadbackProfileTests(unittest.TestCase):
         self.assertFalse(any('readback-profile' in entry['path'] for entry in lock['asahiPatches']))
         with self.assertRaises(ValueError): p.transform('', '')
 
-    def test_independent_builder_rejects_combination_before_preparation(self):
-        with patch.object(builder, 'require_memory') as memory:
-            with self.assertRaises(ValueError): builder.prepare(True, True)
-            memory.assert_not_called()
+    def test_builder_exposes_only_supported_observer_selection(self):
+        import inspect
+        self.assertEqual(list(inspect.signature(builder.prepare).parameters), ['readback_profile'])
 
     def test_synthetic_layout_mode_returns_before_gpu_provider(self):
         source = (p.HERE / 'backend.cpp').read_text()

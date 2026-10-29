@@ -61,6 +61,7 @@ static void VerifyResolveLayoutCpu() {
   }
 }
 
+#ifdef REX_ASAHI_READBACK_GATE
 static void ReadResolveGate(VulkanCommandProcessor& commands, uint32_t red_x, uint32_t red_y) {
   if (red_x >= 64 || red_y >= 64 || !commands.readback_profile_ ||
       rex::cvar::GetFlagByName("readback_resolve") != "some" ||
@@ -121,3 +122,4 @@ static void ReadResolveGate(VulkanCommandProcessor& commands, uint32_t red_x, ui
   if (!commands.readback_profile_->FinalizeIfReady()) throw std::runtime_error("resolve gate trace export");
   std::puts("LAB RESOLVE EXPORT PASS: completed on command-processor owner before ordinary teardown");
 }
+#endif

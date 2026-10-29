@@ -12,7 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = "43b64aeb63fb8553a906fca764e06614b8a6fe43"
 PRIVATE_SUFFIXES = {".xex", ".iso", ".bik", ".wmv", ".pck", ".zip", ".rpm", ".exe", ".dll",
                     ".so", ".spv", ".bundle", ".core", ".log", ".csv", ".bin"}
-SOURCE_SUFFIXES = {".py", ".cpp", ".h", ".cmake", ".patch", ".json", ".md", ".yml", ".yaml"}
+SOURCE_SUFFIXES = {".py", ".cpp", ".h", ".inc", ".cmake", ".patch", ".json", ".md", ".yml", ".yaml"}
+UNRELATED_REPORT = re.compile(
+    rb"fs-verity|FILE CORRUPTED|/var/lib/(?:containerd|docker)(?:/|\b)|nvme\d+n\d+p\d+|\binode\s+\d{4,}")
 LICENSES = ("LICENSE", "forza-recomp/LICENSE-Pinyon-Shift", "patches/rexglue-sdk/LICENSE-Pinyon-Shift")
 
 
@@ -54,6 +56,8 @@ def main():
                 {"CMakeLists.txt", "README", "LICENSE", ".gitignore", ".gitattributes"}):
             errors.append(f"Unexpected non-source addition/change: {name}")
         content = git("show", prefix + name)
+        if path.suffix.lower() == '.md' and UNRELATED_REPORT.search(content):
+            errors.append(f"Unrelated host-system incident in project documentation: {name}")
         if b"\0" in content or content.startswith((b"\x7fELF", b"MZ", b"PK\x03\x04")):
             errors.append(f"Binary content in fork delta: {name}")
         diff_args = ["diff", "--no-ext-diff", "--no-color", "--unified=0"]

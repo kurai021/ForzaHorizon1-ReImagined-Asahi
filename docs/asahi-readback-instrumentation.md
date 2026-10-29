@@ -1,7 +1,7 @@
 # Resolve-readback reasons: CPU validated and synthetic GPU gate passed
 
 The owner authorized continuing after the split-getter candidate was screened
-out. The next target is [readback staging/cache churn](asahi-physical-offset-candidate.md#next-selected-investigation-readback-stalls-not-omitted-readbacks),
+out. The next target is readback staging/cache churn,
 not skipping readbacks or changing synchronization. The initial checkpoint
 prepared/built diagnostics only. The subsequently authorized synthetic GPU gate
 below passed. A later owner-authorized game capture completed cleanly but
@@ -297,18 +297,18 @@ allocation/copy/wait events does **not** imply zero cost or no allocations in th
 lost part of the window. Do not infer the cause of the late readbacks from it.
 No buffer enlargement, policy relaxation or automatic repeat was attempted.
 
-Next scope is **CPU-only recorder refinement**: aggregate/count routine valid
-cache hits rather than letting them consume detailed-event capacity, retaining
-detail for waits, copies, allocations and evictions within the existing memory
-bound. This is a measurement change, not permission to skip GPU resolves or
-readbacks. It needs new completeness/forwarding tests and a renewed synthetic
-gate before another game capture. No new rendering optimization or repeat was
-started by this review. Functional baseline/H0, immutable seeds, candidate bytes
-and the local resource policy were verified unchanged afterwards.
+The subsequent v2 recorder aggregates ordinary short, unscaled valid-copy skips
+per opaque key and retains waits, allocations, copies and exceptional events in
+detail. It preserves the 8192-detail/4096-key bounds and original renderer work.
+Its CPU stress retained 100279 routine skips and late exceptional work without
+loss; legacy v1 parsing remains supported.
 
-The subsequent standing instruction authorized CPU-side continuation until more
-than one option exists or authorization/gameplay observation is needed. The
-[sparse observer and two-option review](asahi-readback-next-options.md) fixes the
-routine-hit flood in a separate CPU-validated build and documents independent
-history-cleanup and coherent-memory candidates. **155 CPU tests passed**; neither
-optimization is applied, and the new sparse binary still needs its own GPU gate.
+The exact v2 binary passed its own synthetic GPU gate and a live bounded capture:
+98096 admitted/completed events, zero losses, four detailed missing-slot copies,
+two evictions and 98090 routine events in 103 summaries. Attribution is limited
+to that admission window; aggregate rows do not retain individual frame tags.
+
+The [final optimization evaluation](asahi-readback-history-final-review.md) found
+no consistent gameplay benefit from history-cleanup memoization. That prototype
+and its dedicated fixtures were retired; the useful generic readback recorder,
+loss qualification, real-resolve correctness fixture and analyzers remain.

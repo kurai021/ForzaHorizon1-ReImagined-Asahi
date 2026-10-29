@@ -177,16 +177,14 @@ def audit_plan(plan):
                 raise RuntimeError("Unexpected runtime search path")
 
 
-def prepare(render_pass_reuse=False, readback_profile=False):
-    if render_pass_reuse and readback_profile:
-        raise ValueError('Evaluate readback telemetry independently of render-pass reuse')
+def prepare(readback_profile=False):
     require_memory()  # use the conservative 6 GiB launch reserve for builds too
     if shutil.disk_usage(ROOT).free < 4 * 1024**3:
         raise RuntimeError("Need at least 4 GiB disk headroom")
     preserved = preserved_inputs()
-    preparer = ("prepare_readback_profile.py" if readback_profile else
-                "prepare_render_pass_reuse.py" if render_pass_reuse else "prepare_submission_profile.py")
-    overlay_output = subprocess.check_output([sys.executable, "-B", str(HERE / preparer)],
+    preparer = "prepare_readback_profile.py" if readback_profile else "prepare_submission_profile.py"
+    prepare_command = [sys.executable, '-B', str(HERE / preparer)]
+    overlay_output = subprocess.check_output(prepare_command,
                                              cwd=ROOT, text=True, timeout=60)
     overlay = ROOT / json.loads(overlay_output)["overlay"]
     source_manifest = json.loads((overlay / "manifest.json").read_text())
@@ -245,8 +243,6 @@ def prepare(render_pass_reuse=False, readback_profile=False):
             units.append({"name": f"{target}-c{index:02d}", "output": str(output),
                            "command": compile_command(line, candidate / "overlay", candidate / "lab", output, mapping,
                                                       overlay_files)})
-            if render_pass_reuse:
-                units[-1]["command"].insert(1, "-DREX_ASAHI_RENDER_PASS_REUSE=1")
             if readback_profile:
                 units[-1]["command"].insert(1, "-DREX_ASAHI_READBACK_GATE=1")
         output = candidate / "runtime" / ("librexgpu-xenos.so" if target == "plugin" else target)
@@ -262,7 +258,7 @@ def prepare(render_pass_reuse=False, readback_profile=False):
     original_probe_object = next(iter(probe_maps["asahi_sdk_probe"]))
     units.append({"name": "candidate-check-link", "output": str(candidate / "runtime/asahi_candidate_check"),
                   "command": link_command(targets["asahi_sdk_probe"][1], {original_probe_object: check_object}, link_deps,
-                                          candidate / "runtime/asahi_candidate_check")})
+                                           candidate / "runtime/asahi_candidate_check")})
     for name in ("SMAA-LICENSE.txt", "AMD-FidelityFX-LICENSE.txt"):
         source = SDK / "out/linux-arm64/Release" / name
         if source.is_file(): copy_new(source, candidate / "runtime" / name)
@@ -333,8 +329,6 @@ def validate(plan):
     env = os.environ | {"LD_LIBRARY_PATH": str(runtime), "TMPDIR": str(candidate / "tmp"),
                         "XDG_DATA_HOME": str(candidate / "host-data"), "XDG_CACHE_HOME": str(candidate / "cache"),
                          "VK_DRIVER_FILES": "/dev/null"}
-    env["ASAHI_EXPECT_RENDER_PASS_REUSE"] = str(int(
-        plan["inputs"]["overlay"].get("experiment") == "single-rgba8-1x-cache-identity"))
     env["ASAHI_EXPECT_READBACK_PROFILE"] = str(int(
         plan["inputs"]["overlay"].get("experiment") == "resolve-readback-reasons"))
     prefix = "candidate-" + plan["token"][:8]
@@ -373,15 +367,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--resume", action="store_true")
-    experiments = parser.add_mutually_exclusive_group()
-    experiments.add_argument("--render-pass-reuse", action="store_true", help="Include the optional, default-off cache-identity experiment")
-    experiments.add_argument("--readback-profile", action="store_true", help="Independent default-off resolve-readback reasons recorder")
+    parser.add_argument("--readback-profile", action="store_true", help="Independent default-off resolve-readback reasons recorder")
     parser.add_argument("--execute", nargs=2, metavar=("PLAN", "INDEX"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.execute:
         execute(Path(args.execute[0]), int(args.execute[1]))
         return
-    plan_path, plan = prepare(args.render_pass_reuse, args.readback_profile)
+    plan_path, plan = prepare(args.readback_profile)
     if args.build:
         build_candidate(plan_path, plan, args.resume)
         validate(plan)

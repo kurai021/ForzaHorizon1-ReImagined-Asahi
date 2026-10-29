@@ -134,10 +134,9 @@ blindly removing `force_end_render_pass` or required barriers is not a valid
 optimization. Mesa batching remains excluded because of its documented
 correctness failures. Do not promise a gain from the call counts alone.
 
-The subsequent [offline render-pass reuse review](asahi-render-pass-reuse-review.md)
-identifies a narrow duplicate-cache-identity candidate for compatible color
-transfer/draw passes. It proposes CPU-only equivalence work before any renderer
-patch or new GPU session; live applicability and benefit are not established.
+The subsequent render-pass reuse experiment found no demonstrated performance
+benefit and was retired. Its cache-identity prototype is not a maintained renderer
+feature. See the [closed evaluation](asahi-readback-history-final-review.md).
 
 All profiles, traces, plans, qualified reviews and owner confirmations remain
 under ignored `out/asahi-profiling/candidate-play/drm-20261028T154430Z/`.
